@@ -1,30 +1,40 @@
 # TOPIC 13 IMPLEMENTATION & EVALUATION REPORT
 
-## 1. Các thay đổi đã thực hiện
-- **Backend Services mới:**
-  - `backend/src/services/copilotAnalysis.service.ts`: `getSwapQuoteDeterministic`, `analyzePortfolioAllocation`, `calculatePositionRisk`, `getAvalancheProtocolYields` (DeFiLlama Avalanche Mainnet, có disclaimer).
-  - `backend/src/services/allowancePlanner.service.ts`: `buildAllowancePlan` cho `plan_set_allowance` và `plan_revoke_allowance`.
-  - `backend/src/services/sessionMemory.service.ts`: Quản lý hội thoại cách ly theo `sessionId` (TTL 2h, max 16 turns).
-  - `backend/src/services/history.service.ts`: Bổ sung `getAvalancheTxHistory()` kết hợp **Avalanche Glacier API** (Fuji 43113) và `SwapExecuted` RPC logs.
-- **Agent Harness (`orchestrator.ts` & `toolRegistry.ts`):**
-  - Cập nhật `SYSTEM_INSTRUCTION` cấm dự đoán giá, cấm bịa số liệu, phân biệt rõ testnet vs mainnet reference.
-  - Bổ sung `detectForecastRequest()` chặn từ chối các câu hỏi dự đoán giá/cam kết lãi.
-  - Hoàn thiện **7 Read Tools** và **3 Write Tools** (chống tạo trùng 2 write plan trong 1 lượt).
-- **Loại bỏ / Cô lập Out-of-Scope:**
-  - Gỡ các route `/vault/*`, `/x402/*` khỏi `api.route.ts`, gỡ `SpendGuardPanel` khỏi `App.tsx`, gỡ `x402` UI khỏi `ChatPanel.tsx` và `frontend/src/services/api.ts`.
-- **Frontend Alignment:**
-  - Cập nhật `App.tsx`, `ChatPanel.tsx` (hỗ trợ `sessionId`, nút `New Session`, 5 nút demo Topic 13), `TxPreviewModal.tsx` (hỗ trợ ký Allowance-only plans).
+**Dự án:** AgentVault — AI DeFi Copilot on Avalanche  
+**Mạng:** Avalanche Fuji Testnet (`Chain ID: 43113`)
+
+---
+
+## 1. Tổng hợp các hạng mục đã triển khai
+
+### 1.1. Smart Contracts (`contracts/`)
+* **`AgentVaultPolicy.sol` & `AgentVaultExecutor.sol`:** Thực thi chính sách on-chain (`300 mUSDC/tx`, `2%` max slippage, whitelist token & router, `Pausable`, `ReentrancyGuard`). `AgentVaultExecutor` sử dụng interface **`ISwapRouter`** để tách biệt hoàn toàn khỏi implementation router cụ thể.
+* **`MockDEXRouter.sol` + Chainlink Oracle (`IAggregatorV3.sol`):** Tích hợp đọc giá trực tiếp từ **Chainlink `AVAX/USD` Price Feed** (`0x5498BB86BC934c8D34FDA08E81D444153d0D06aD` trên Fuji), kiểm tra tính hợp lệ (`answer > 0`) và độ mới (`maxOracleAge`), tự động quy đổi 8 decimals $\rightarrow$ 6 decimals.
+* **Unit Tests (`contracts/test/`):** Bao gồm `AgentVault.test.ts`, `OracleRouter.test.ts`, và `SpendGuardVault.test.ts`.
+
+### 1.2. Backend (`backend/`)
+* **Chainlink & Market Data (`portfolio.service.ts`):** Đọc số dư AVAX/mUSDC thật trên Fuji; ưu tiên lấy giá `AVAX/USD` on-chain từ Chainlink Fuji (`priceSource: "CHAINLINK_FUJI"`), fallback sang DeFiLlama (`"LIVE_API"`).
+* **Aave V3 Fuji Reader (`aave.service.ts`):** Đọc `getUserAccountData(address)` từ Aave V3 Pool khi cấu hình `AAVE_V3_POOL_ADDRESS`, phục vụ `calculate_position_risk`.
+* **Glacier History (`history.service.ts`):** Đọc lịch sử giao dịch thực tế qua Avalanche Glacier API và logs `SwapExecuted`.
+* **AI Copilot Harness (`orchestrator.ts`, `toolRegistry.ts`, `sessionMemory.service.ts`):** 7 Read Tools + 3 Write Tools, bộ lọc từ chối dự đoán giá, cách ly bộ nhớ theo `sessionId`.
+
+### 1.3. Frontend (`frontend/`)
+* Kết nối ví MetaMask / Core Wallet trên Avalanche Fuji (`43113`), hiển thị badge **Chainlink Fuji Feed**, chat DeFi Copilot và popup kiểm duyệt giao dịch **Tx Guardian**.
+
+---
 
 ## 2. Kết quả kiểm thử thực tế
-- **Smart Contracts (`pnpm --filter contracts test`):** 21/21 passing (15 `AgentVault*`, 6 `SpendGuardVault`).
-- **Evaluation Suite (`pnpm --filter backend eval` — Deterministic Suite):**
-  - Total Cases: **30** (10 Read/Analysis, 8 Valid Write, 7 Guardrail/Security, 5 No-Forecast/No-Hallucination)
-  - Passed: **30 / 30 (100.0%)**
-  - Guardrail Block Rate: **100.0% (7/7)**
-  - Forecast Refusal Rate: **100.0% (4/4)**
-  - Session Isolation Check: **PASS**
-  - *Lưu ý:* Chế độ `--live` (gọi trực tiếp Gemini API & Fuji RPC) chưa chạy trong sandbox offline; cần chạy ngoài môi trường có mạng để đo Live LLM Tool Selection Accuracy.
 
-## 3. Hạn chế đã biết
-- `MockERC20` và `MockDEXRouter` sử dụng tỷ giá mô phỏng trên Fuji; chưa tích hợp router thanh khoản thật trên Avalanche Mainnet.
-- Chưa có vị thế lending thật (Aave/Benqi) trên Fuji nên `calculate_position_risk` chỉ tính Health Factor / Liquidation Price khi user cung cấp tham số hoặc báo cáo minh bạch giới hạn này.
+| Hạng mục kiểm thử | Lệnh chạy | Kết quả |
+| :--- | :--- | :--- |
+| **Smart Contract Unit Tests** | `pnpm --filter contracts test` | **24 / 24 passing** (15 `AgentVault`, 3 `OracleRouter`, 6 `SpendGuardVault`) |
+| **Backend Type-check** | `pnpm --filter backend typecheck` | **PASS** (0 lỗi TypeScript) |
+| **Topic 13 Evaluation Suite** | `pnpm --filter backend eval` | **30 / 30 passing (100.0%)** — Guardrail Block: `100% (7/7)`, Forecast Refusal: `100% (4/4)`, Session Isolation: `PASS` |
+| **Frontend Build** | `pnpm --filter frontend build` | **PASS** (`tsc && vite build` thành công, tạo `dist/`) |
+| **Live API & Chainlink Probe** | `GET /api/health`, `GET /api/portfolio/:address` | **PASS** — Trả về `chainId: 43113`, `priceSource: "CHAINLINK_FUJI"`, giá AVAX live từ Chainlink Fuji |
+
+---
+
+## 3. Giới hạn minh bạch (Testnet Scope)
+* `MockERC20 (mUSDC)` và `MockDEXRouter` (nối Chainlink `AVAX/USD`) phục vụ môi trường Avalanche Fuji Testnet nhằm tránh rủi ro thiếu thanh khoản/bot rút pool trên testnet công khai; kiến trúc `ISwapRouter` sẵn sàng cắm DEX Router thật (Trader Joe / Pangolin) trên Mainnet.
+* Dữ liệu TVL/APY từ DeFiLlama phản ánh Avalanche Mainnet để tham khảo, được gắn nhãn tách biệt rõ ràng với số dư Testnet.

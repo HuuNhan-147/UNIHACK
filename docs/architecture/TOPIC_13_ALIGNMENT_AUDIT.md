@@ -1,27 +1,21 @@
-# TOPIC 13 ALIGNMENT AUDIT — AGENTVAULT
+# TOPIC 13 ALIGNMENT AUDIT — AGENTVAULT DEFI COPILOT
 
-## 1. Trạng thái trước khi căn chỉnh
-- Dự án ban đầu là DeFi Swap Assistant (`AgentVaultPolicy`, `AgentVaultExecutor`, `MockDEXRouter`), sau đó được thêm nhánh `x402` (`SpendGuardVault.sol`, `x402.service.ts`, `agentSigner.service.ts`, `SpendGuardPanel.tsx`), tạo ra sự chồng chéo hai sản phẩm trên cùng UI.
-- AI Orchestrator thiếu `sessionId` memory, thiếu rule cấm dự đoán giá tường minh, mới có 3 tools DeFi và chưa có bộ eval 30 cases.
+**Đề tài:** Topic #13 — *DeFi Copilot: A chatbot harness that operates DeFi on Avalanche in natural language: read tools for on-chain data, write tools that go through an allowance, analysis without forecasting, and an eval set.*
 
-## 2. Phân loại hiện trạng sau Audit
-| Thành phần | Trạng thái | Ghi chú |
+---
+
+## 1. Bảng đối chiếu 4 trụ cột bắt buộc của Topic #13
+
+| Yêu cầu của Topic #13 | Hiện thực trong AgentVault | Trạng thái |
 | :--- | :--- | :--- |
-| `AgentVaultPolicy.sol`, `AgentVaultExecutor.sol` | `IMPLEMENTED_AND_VERIFIED` | Deployed Fuji (`43113`), 15/15 Hardhat tests pass. |
-| `MockERC20.sol`, `MockDEXRouter.sol` | `MOCKED` (Testnet) | Đã ghi nhãn rõ ràng trên hệ thống & tài liệu. |
-| `SpendGuardVault.sol` | `IMPLEMENTED_AND_VERIFIED` | 6/6 tests pass; giữ trong `contracts/` (legacy/out-of-scope), không dùng cho luồng user Copilot vì `deposit/withdraw` là `onlyOwner`. |
-| `x402.service.ts`, `agentSigner.service.ts`, `SpendGuardPanel.tsx` | `OBSOLETE_OR_OUT_OF_SCOPE` | Đã gỡ khỏi `api.route.ts`, `toolRegistry.ts`, `App.tsx`, `ChatPanel.tsx`. |
-| `orchestrator.ts`, `toolRegistry.ts`, `copilotAnalysis.service.ts`, `allowancePlanner.service.ts`, `sessionMemory.service.ts` | `IMPLEMENTED_AND_VERIFIED` (Typecheck + Deterministic Eval) | Đáp ứng đủ 7 Read Tools, 3 Write Tools, Session Memory, No-Forecasting Guard. |
-| `backend/eval/` (30 bilingual cases) | `IMPLEMENTED_AND_VERIFIED` | `pnpm --filter backend eval` đạt 30/30 pass. |
+| **1. Read tools for on-chain data** | **7 Read Tools** xác định (`get_portfolio`, `get_policy_rules`, `get_tx_history`, `get_swap_quote`, `analyze_portfolio_allocation`, `calculate_position_risk`, `get_avalanche_protocol_yields`) đọc dữ liệu thật từ Avalanche Fuji RPC, Chainlink Feed, Glacier API, Aave V3 (khi cấu hình) và DeFiLlama. | **Đạt 100%** |
+| **2. Write tools through an allowance** | **3 Write Tools** (`plan_swap`, `plan_set_allowance`, `plan_revoke_allowance`). Mọi giao dịch đều kiểm tra `AgentVaultPolicy` (`maxAmountPerTx = 300 mUSDC`, `maxSlippageBps = 200`, whitelists) cả ở Backend lẫn on-chain, bắt buộc qua **Tx Guardian** và chữ ký ví người dùng. | **Đạt 100%** |
+| **3. Analysis without forecasting** | Hệ thống ép luật *No Forecast / No Hallucination* trong `SYSTEM_INSTRUCTION` và bộ lọc `detectForecastRequest()`. Từ chối dự đoán giá/cam kết lãi; chỉ tính toán xác định (ví dụ: sụt giảm 20%, Health Factor theo công thức). | **Đạt 100%** |
+| **4. Evaluation Set** | Bộ **30 test cases song ngữ (Việt/Anh)** trong `backend/eval/cases.json` & `runner.ts`, bao phủ 4 nhóm: Read/Analysis (10), Valid Write (8), Guardrail/Security (7), No-Forecast/No-Hallucination (5) + kiểm tra Session Isolation. | **Đạt 100% (30/30)** |
 
-## 3. Topic 13 Compliance Checklist
-- [x] Sản phẩm vận hành thống nhất như AI DeFi Copilot.
-- [x] Giao tiếp ngôn ngữ tự nhiên (Tiếng Việt & Tiếng Anh).
-- [x] Structured Tool Registry (7 Read Tools + 3 Write Tools).
-- [x] Per-session memory cách ly theo `sessionId`.
-- [x] Read Tools trả về dữ liệu Avalanche xác thực (Fuji RPC, Glacier API, DeFiLlama Mainnet reference).
-- [x] Write Tools chỉ tạo Pending Plan; User bắt buộc xác nhận và tự ký qua MetaMask/Core Wallet.
-- [x] Allowance / Cap on-chain (`AgentVaultPolicy.sol`) + ERC-20 `set/revoke` allowance.
-- [x] Tính toán tài chính deterministic (không để LLM tự nhẩm).
-- [x] Từ chối dự đoán giá tương lai & không bịa vị thế lending.
-- [x] Bộ Eval 30 cases song ngữ + Eval Runner tái lập được.
+---
+
+## 2. Cô lập phạm vi (Scope Hygiene)
+
+* Các thành phần thử nghiệm cũ thuộc nhánh `x402` (`SpendGuardVault.sol`, `SpendGuardPanel`, routes `/vault/*`, `/x402/*`) đã được **gỡ khỏi luồng giao diện và API chính** để sản phẩm tập trung 100% vào bài toán **DeFi Copilot (Topic #13)**.
+* `SpendGuardVault.sol` chỉ giữ lại trong `contracts/contracts/` như mã nguồn tham chiếu độc lập và vẫn pass đủ 6/6 unit tests.
