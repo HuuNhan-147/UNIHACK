@@ -1,0 +1,14 @@
+{
+  "network": "fuji",
+  "chainId": 43113,
+  "deployer": "0x305533Ab075f168ea052559b91453ca2522a0a33",
+  "contracts": {
+    "MockERC20": "0xb8463e3a406998841d2c442EbbD247D3D4d36Ed1",
+    "AgentVaultPolicy": "0x940d6C627C55F002A42eAc257d7A36dbDe4157e7",
+    "MockDEXRouter": "0x6543093442989Ee42f440b5d1B15ae178d1b807D",
+    "AgentVaultExecutor": "0x80893169CD4677b40c0Eb88425A98FE80B688E36",
+    "SpendGuardVault": "0xCc9Eb939085Ee9AC39637b610943D840a8D5b6Ae"
+  },
+  "deployedAt": "2026-11-16T10:42:05.264Z",
+  "spendGuardDeployedAt": "2026-11-17T09:30:36.624Z"
+}

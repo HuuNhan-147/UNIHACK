@@ -1,0 +1,16 @@
+{
+  "name": "agentvault-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Policy-Governed AI Agent for Autonomous DeFi Portfolio Management on Avalanche",
+  "scripts": {
+    "contracts:compile": "pnpm --filter contracts compile",
+    "contracts:test": "pnpm --filter contracts test",
+    "contracts:deploy:fuji": "pnpm --filter contracts deploy:fuji",
+    "backend:dev": "pnpm --filter backend dev",
+    "frontend:dev": "pnpm --filter frontend dev"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -1,0 +1,9 @@
+packages:
+  - "contracts"
+  - "backend"
+  - "frontend"
+onlyBuiltDependencies:
+  - esbuild
+  - keccak
+  - secp256k1
+  - "@tailwindcss/oxide"
