@@ -64,13 +64,13 @@ Avalanche Fuji Smart Contracts (Chain ID: 43113)
 
 ## 4. Địa chỉ Smart Contracts trên Avalanche Fuji (`43113`)
 
-* **Chainlink `AVAX/USD` Feed (Fuji):** `0x5498BB86BC934c8D34FDA08E81D444153d0D06aD`
-* **Verified Aave V3 Pool (Fuji):** `0xccEa5C65f6d4F465B71501418b88FBe4e7071283`
-* **Triển khai hiện tại (`contracts/deployments/fuji.json`):**
-  * `MockERC20 (mUSDC)`: `0xb8463e3a406998841d2c442EbbD247D3D4d36Ed1`
-  * `AgentVaultPolicy`: `0x940d6C627C55F002A42eAc257d7A36dbDe4157e7`
-  * `MockDEXRouter` *(Chainlink-backed, `useOracle = true`)*: `0x6ABC46F7D0ECaf22005b9d266B77e7AE9f79B8B8`
-  * `AgentVaultExecutor`: `0x927937eC37b343290b22893f90C00E8eE4AE6582`
+* **Chainlink `AVAX/USD` Feed (Fuji):** [`0x5498BB86BC934c8D34FDA08E81D444153d0D06aD`](https://testnet.snowtrace.io/address/0x5498BB86BC934c8D34FDA08E81D444153d0D06aD)
+* **Verified Aave V3 Pool (Fuji):** [`0xccEa5C65f6d4F465B71501418b88FBe4e7071283`](https://testnet.snowtrace.io/address/0xccEa5C65f6d4F465B71501418b88FBe4e7071283)
+* **Triển khai hiện tại (`contracts/deployments/fuji.json`) — Đã Verified Source Code trên Snowtrace / Routescan Fuji:**
+  * `MockERC20 (mUSDC)`: [`0xb8463e3a406998841d2c442EbbD247D3D4d36Ed1`](https://testnet.snowtrace.io/address/0xb8463e3a406998841d2c442EbbD247D3D4d36Ed1#code)
+  * `AgentVaultPolicy`: [`0x940d6C627C55F002A42eAc257d7A36dbDe4157e7`](https://testnet.snowtrace.io/address/0x940d6C627C55F002A42eAc257d7A36dbDe4157e7#code)
+  * `MockDEXRouter` *(Chainlink-backed, `useOracle = true`)*: [`0x6ABC46F7D0ECaf22005b9d266B77e7AE9f79B8B8`](https://testnet.snowtrace.io/address/0x6ABC46F7D0ECaf22005b9d266B77e7AE9f79B8B8#code)
+  * `AgentVaultExecutor`: [`0x927937eC37b343290b22893f90C00E8eE4AE6582`](https://testnet.snowtrace.io/address/0x927937eC37b343290b22893f90C00E8eE4AE6582#code)
 
 ---
 

@@ -6,9 +6,19 @@ import { apiRouter } from "./routes/api.route";
 
 const app = express();
 
+const allowedOrigins = env.FRONTEND_URL.split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: env.FRONTEND_URL,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS blocked for origin: ${origin}`));
+      }
+    },
   })
 );
 app.use(express.json());

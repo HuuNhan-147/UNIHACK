@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: agentvault-backend
+    runtime: node
+    plan: free
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter backend build
+    startCommand: node backend/dist/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: PORT
+        value: "4000"
+      - key: CHAIN_ID
+        value: "43113"
+      - key: FUJI_RPC_URL
+        value: https://api.avax-test.network/ext/bc/C/rpc
+      - key: MUSDC_ADDRESS
+        value: "0xb8463e3a406998841d2c442EbbD247D3D4d36Ed1"
+      - key: POLICY_ADDRESS
+        value: "0x940d6C627C55F002A42eAc257d7A36dbDe4157e7"
+      - key: ROUTER_ADDRESS
+        value: "0x6ABC46F7D0ECaf22005b9d266B77e7AE9f79B8B8"
+      - key: EXECUTOR_ADDRESS
+        value: "0x927937eC37b343290b22893f90C00E8eE4AE6582"
+      - key: CHAINLINK_AVAX_USD_FEED
+        value: "0x5498BB86BC934c8D34FDA08E81D444153d0D06aD"
+      - key: AAVE_V3_POOL_ADDRESS
+        value: "0xccEa5C65f6d4F465B71501418b88FBe4e7071283"
+      - key: FRONTEND_URL
+        sync: false
+      - key: GEMINI_API_KEYS
+        sync: false

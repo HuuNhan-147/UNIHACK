@@ -28,6 +28,22 @@ const config: HardhatUserConfig = {
       accounts: DEPLOYER_PRIVATE_KEY ? [DEPLOYER_PRIVATE_KEY] : [],
     },
   },
+  etherscan: {
+    apiKey: {
+      fuji: process.env.SNOWTRACE_API_KEY || "snowtrace",
+    },
+    customChains: [
+      {
+        network: "fuji",
+        chainId: 43113,
+        urls: {
+          apiURL:
+            "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan/api",
+          browserURL: "https://testnet.snowtrace.io",
+        },
+      },
+    ],
+  },
 };
 
 export default config;
