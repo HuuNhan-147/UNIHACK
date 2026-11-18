@@ -122,7 +122,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
   {
     name: "get_avalanche_protocol_yields",
     description:
-      "Fetch live Avalanche Mainnet protocol TVL and variable APY data from DeFiLlama (e.g. Benqi, Aave, Trader Joe). Reference only; never guaranteed.",
+      "Fetch live Avalanche protocol TVL and variable APY snapshot from DeFiLlama. MUST be called for any Avalanche APY/TVL query (including unfamiliar protocol names) to verify live data or return INSUFFICIENT_DATA.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -211,7 +211,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
   {
     name: "plan_set_allowance",
     description:
-      "Prepare an unsigned ERC-20 exact approve transaction for AgentVaultExecutor within policy cap (max 300 mUSDC). User must confirm and sign.",
+      "Prepare an unsigned ERC-20 exact approve transaction for AgentVaultExecutor (also validates and blocks over-cap requests > 300 mUSDC via Policy Engine). Requires an explicit numeric amount from user.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -221,7 +221,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
         },
         amountMusdc: {
           type: SchemaType.NUMBER,
-          description: "Exact mUSDC allowance amount to approve (<= 300).",
+          description: "Explicit mUSDC allowance amount requested by the user.",
         },
       },
       required: ["userAddress", "amountMusdc"],

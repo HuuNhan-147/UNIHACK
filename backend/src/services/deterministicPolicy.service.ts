@@ -45,6 +45,13 @@ export function detectMaliciousIntent(message: string): MaliciousIntentResult {
   if (/0x[a-f0-9]{40}/i.test(message) && /chuyển|send|transfer/i.test(lower)) {
     flags.push("ARBITRARY_RECIPIENT_TRANSFER");
   }
+  if (
+    /private\s*key|seed\s*phrase|mnemonic|auto[\s-]*sign|tự\s*động\s*ký|without\s*signature|không\s*cần\s*ký/i.test(
+      lower
+    )
+  ) {
+    flags.push("SECRET_OR_CUSTODY_VIOLATION");
+  }
 
   if (flags.length > 0) {
     return {

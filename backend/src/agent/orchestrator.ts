@@ -59,10 +59,13 @@ Strict Behavioral Rules:
    - DETERMINISTIC_MATH: Allocation weights, -20% AVAX stress drawdown, or user-supplied collateral/debt simulations.
    - INSUFFICIENT_DATA: Missing/unverified positions (e.g., Benqi lending positions on Fuji or wallets with 0 debt).
 5. Distinguish strictly between: (a) a read-only Swap Quote (get_swap_quote, isExecuted=false — no transaction created), (b) a pending Transaction Plan (plan_swap / plan_set_allowance / plan_revoke_allowance — unsigned, awaiting user review in Tx Guardian), and (c) a signed on-chain transaction. Never claim a transaction has been executed before the user signs it.
-6. UNSUPPORTED PROTOCOLS / CHAINS / PAIRS: AgentVault ONLY supports write transactions on Avalanche Fuji (43113) via AgentVaultExecutor for the whitelisted pair mUSDC -> AVAX and mUSDC allowance management. If a user asks to swap unsupported pairs (e.g., mUSDC -> BTC.b, ETH, SOL) or execute transactions on unsupported protocols/chains (e.g., Uniswap, GMX, Solana, Ethereum Mainnet, Benqi borrow/supply), DO NOT call any write tool — clearly explain that the protocol/pair/chain is outside AgentVault's whitelisted scope.
-7. SESSION & WALLET PRIVACY: Only use the [Connected Wallet] address provided in the current turn. Never fabricate or reuse another user's wallet address. If no wallet is connected and a wallet tool is needed, ask the user to connect their Avalanche Fuji wallet first.
-8. Respond concisely in the same language the user used (Vietnamese or English).
-9. DO NOT call any tools for casual greetings, thank-yous, or general conceptual questions (e.g., "What is Tx Guardian?", "Slippage là gì?"). Answer those directly.`;
+6. MISSING AMOUNT GUARD: If the user asks to swap or approve tokens WITHOUT specifying an explicit numeric amount (e.g., "Swap mUSDC to AVAX"), NEVER guess or infer an amount from their wallet balance — DO NOT call plan_swap, plan_set_allowance, or get_swap_quote; ask the user how much mUSDC they want to swap/approve.
+7. EXPLICIT OVER-LIMIT REQUESTS ON WHITELISTED PAIR: When the user explicitly specifies a positive numeric amount for mUSDC -> AVAX swap or mUSDC allowance on Avalanche Fuji (even if the amount > 300 mUSDC or slippage > 200 bps, e.g., 500 mUSDC or 1000 mUSDC), ALWAYS call plan_swap or plan_set_allowance so the deterministic Policy Engine and Tx Guardian produce a formal REJECTED/BLOCKED simulation report.
+8. ALWAYS VERIFY YIELDS VIA TOOL: For ANY question asking about protocol APY or TVL on Avalanche (even if the protocol name looks unfamiliar), ALWAYS call get_avalanche_protocol_yields with protocolFilter instead of answering from memory, and report INSUFFICIENT_DATA if no pools match.
+9. UNSUPPORTED PROTOCOLS / CHAINS / PAIRS: AgentVault ONLY supports write transactions on Avalanche Fuji (43113) via AgentVaultExecutor for the whitelisted pair mUSDC -> AVAX and mUSDC allowance management. If a user asks to swap unsupported pairs (e.g., mUSDC -> BTC.b, ETH, SOL) or execute transactions on unsupported protocols/chains (e.g., Uniswap, GMX, Solana, Ethereum Mainnet, Benqi borrow/supply), DO NOT call any write tool — clearly explain that the protocol/pair/chain is outside AgentVault's whitelisted scope.
+10. SESSION & WALLET PRIVACY: Only use the [Connected Wallet] address provided in the current turn. Never fabricate or reuse another user's wallet address. If no wallet is connected and a wallet tool is needed, ask the user to connect their Avalanche Fuji wallet first.
+11. Respond concisely in the same language the user used (Vietnamese or English).
+12. DO NOT call any tools for casual greetings, thank-yous, or general conceptual questions (e.g., "What is Tx Guardian?", "Slippage là gì?"). Answer those directly.`;
 
 export function detectCasualGreeting(message: string): "vi" | "en" | null {
   const trimmed = message.trim();
@@ -471,14 +474,33 @@ export async function runAgentChat(
         let decision: GovernanceDecision = ctx.latestSwapPlan?.decision ?? "ASK";
         if (!ctx.latestSwapPlan) {
           const lowerReply = replyText.toLowerCase();
+          const nonPolicyReadTools = toolsUsed.filter(
+            (t) => t !== "get_policy_rules"
+          );
           if (
-            lowerReply.includes("vượt") ||
-            lowerReply.includes("không thể") ||
-            lowerReply.includes("từ chối") ||
-            lowerReply.includes("không dự đoán") ||
-            lowerReply.includes("cannot predict") ||
-            lowerReply.includes("exceed") ||
-            lowerReply.includes("rejected")
+            nonPolicyReadTools.length === 0 &&
+            (lowerReply.includes("vượt") ||
+              lowerReply.includes("không thể") ||
+              lowerReply.includes("không hợp lệ") ||
+              lowerReply.includes("phải lớn hơn") ||
+              lowerReply.includes("không hỗ trợ") ||
+              lowerReply.includes("chưa hỗ trợ") ||
+              lowerReply.includes("ngoài phạm vi") ||
+              lowerReply.includes("chỉ hỗ trợ") ||
+              lowerReply.includes("từ chối") ||
+              lowerReply.includes("không dự đoán") ||
+              lowerReply.includes("cannot") ||
+              lowerReply.includes("unable") ||
+              lowerReply.includes("invalid") ||
+              lowerReply.includes("negative") ||
+              lowerReply.includes("must be a positive") ||
+              lowerReply.includes("greater than") ||
+              lowerReply.includes("not supported") ||
+              lowerReply.includes("unsupported") ||
+              lowerReply.includes("only support") ||
+              lowerReply.includes("outside") ||
+              lowerReply.includes("exceed") ||
+              lowerReply.includes("rejected"))
           ) {
             decision = "REJECT";
           } else if (toolsUsed.length > 0) {
