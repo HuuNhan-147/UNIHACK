@@ -60,7 +60,13 @@ interface WalletContextValue {
   connect: () => Promise<void>;
   disconnect: () => void;
   switchToFuji: () => Promise<void>;
-  sendTx: (tx: { to: string; data: string; value?: string }) => Promise<string>;
+  sendTx: (tx: {
+    to: string;
+    data: string;
+    value?: string;
+    chainId?: number;
+    integrityHash?: string;
+  }) => Promise<string>;
   signMessage: (message: string) => Promise<string>;
   callFaucet: () => Promise<string>;
 }
@@ -167,9 +173,30 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({
     setAddress(null);
   };
 
-  const sendTx = async (tx: { to: string; data: string; value?: string }) => {
+  const sendTx = async (tx: {
+    to: string;
+    data: string;
+    value?: string;
+    chainId?: number;
+    integrityHash?: string;
+  }) => {
     if (!window.ethereum) throw new Error("Ví chưa kết nối.");
     const provider = new ethers.BrowserProvider(window.ethereum);
+    const net = await provider.getNetwork();
+    if (Number(net.chainId) !== FUJI_CHAIN_ID) {
+      throw new Error(
+        `Sai mạng Blockchain (hiện tại: ${net.chainId}, yêu cầu Avalanche Fuji ${FUJI_CHAIN_ID}).`
+      );
+    }
+    if (tx.integrityHash) {
+      const packed = `${tx.chainId ?? FUJI_CHAIN_ID}:${tx.to.toLowerCase()}:${tx.data.toLowerCase()}:${tx.value || "0"}`;
+      const clientHash = ethers.keccak256(ethers.toUtf8Bytes(packed));
+      if (clientHash !== tx.integrityHash) {
+        throw new Error(
+          "Cảnh báo bảo mật: Calldata giao dịch đã bị thay đổi sau bước Simulation. Đã hủy ký."
+        );
+      }
+    }
     const signer = await provider.getSigner();
     const sent = await signer.sendTransaction({
       to: tx.to,

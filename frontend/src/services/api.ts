@@ -97,6 +97,28 @@ export interface StructuredPlanRecord {
   };
 }
 
+export type SimulationStatus =
+  | "SIMULATION_PASSED"
+  | "SIMULATION_FAILED"
+  | "SIMULATION_UNAVAILABLE";
+
+export interface TxSimulationReport {
+  status: SimulationStatus;
+  txType: "SWAP" | "APPROVE" | "REVOKE_ALLOWANCE";
+  chainId: number;
+  from: string;
+  to: string;
+  functionName: string;
+  integrityHash: string;
+  simulatedBlock?: number;
+  estimatedGas?: string;
+  simulatedOutputAvax?: string;
+  revertReason?: string;
+  warnings: string[];
+  unverifiedConditions: string[];
+  simulatedAt: string;
+}
+
 export interface TxGuardianSummary {
   overallDecision: "PASS" | "WARNING" | "BLOCKED";
   exactApproval: { passed: boolean; detail: string };
@@ -108,6 +130,8 @@ export interface TxGuardianSummary {
   };
   onChainSlippageGuard: { passed: boolean; detail: string };
   plainLanguageSummary: string;
+  simulation?: TxSimulationReport;
+  approveSimulation?: TxSimulationReport;
 }
 
 export interface UnsignedTx {
@@ -116,6 +140,7 @@ export interface UnsignedTx {
   value: string;
   chainId: number;
   description: string;
+  integrityHash?: string;
 }
 
 export interface SwapPlan {
@@ -291,6 +316,21 @@ export async function verifyTransaction(params: {
   prePortfolio?: PortfolioData | null;
 }): Promise<PostTxVerificationResult> {
   const res = await fetch(`${API_BASE}/tx/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return handleJson(res);
+}
+
+export async function simulateTransaction(params: {
+  from: string;
+  to: string;
+  data: string;
+  value?: string;
+  chainId?: number;
+}): Promise<TxSimulationReport> {
+  const res = await fetch(`${API_BASE}/tx/simulate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),

@@ -22,6 +22,7 @@ import {
 } from "../services/store.service";
 import { validatePolicyConfigUpdate } from "../services/deterministicPolicy.service";
 import { verifyAndRecordTransaction } from "../services/postTx.service";
+import { simulateUnsignedTransaction } from "../services/txSimulator.service";
 
 export const apiRouter = Router();
 
@@ -247,6 +248,24 @@ apiRouter.post("/tx/prepare", async (req, res) => {
     res.json(plan);
   } catch (err: any) {
     res.status(400).json({ error: err?.message || "Failed to prepare swap" });
+  }
+});
+
+apiRouter.post("/tx/simulate", async (req, res) => {
+  try {
+    const parsed = z
+      .object({
+        from: z.string().min(42).max(42),
+        to: z.string().min(42).max(42),
+        data: z.string().startsWith("0x"),
+        value: z.string().optional().default("0"),
+        chainId: z.number().int().optional(),
+      })
+      .parse(req.body);
+    const report = await simulateUnsignedTransaction(parsed);
+    res.json(report);
+  } catch (err: any) {
+    res.status(400).json({ error: err?.message || "Failed to simulate tx" });
   }
 });
 

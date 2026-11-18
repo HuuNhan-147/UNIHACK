@@ -13,6 +13,10 @@ import {
   UnsignedTx,
 } from "./swapPlanner.service";
 import { getAgentProfile, savePlan, StructuredPlanRecord } from "./store.service";
+import {
+  computeTxIntegrityHash,
+  simulateUnsignedTransaction,
+} from "./txSimulator.service";
 
 const musdcIface = new ethers.Interface(MOCK_ERC20_ABI);
 
@@ -78,23 +82,46 @@ export async function buildAllowancePlan(params: {
       ? "Copilot đang ở chế độ ADVISORY (chỉ đọc & phân tích, không tạo transaction)."
       : undefined;
 
+  const approveData = musdcIface.encodeFunctionData("approve", [
+    env.EXECUTOR_ADDRESS,
+    amountRaw,
+  ]);
   const approveTx: UnsignedTx = {
     to: env.MUSDC_ADDRESS,
-    data: musdcIface.encodeFunctionData("approve", [
-      env.EXECUTOR_ADDRESS,
-      amountRaw,
-    ]),
+    data: approveData,
     value: "0",
     chainId: env.CHAIN_ID,
     description:
       params.mode === "REVOKE"
         ? "Revoke mUSDC allowance (set to 0) for AgentVaultExecutor"
         : `Set exact mUSDC allowance to ${targetAmount} mUSDC for AgentVaultExecutor`,
+    integrityHash: computeTxIntegrityHash({
+      chainId: env.CHAIN_ID,
+      to: env.MUSDC_ADDRESS,
+      data: approveData,
+      value: "0",
+    }),
   };
+
+  const sim = await simulateUnsignedTransaction({
+    from: params.userAddress,
+    to: approveTx.to,
+    data: approveTx.data,
+    value: approveTx.value,
+    chainId: approveTx.chainId,
+  });
+
+  const finalValid = valid && sim.status !== "SIMULATION_FAILED";
+  const finalDecision: GovernanceDecision = !finalValid ? "REJECT" : decision;
+  const finalReason = reason || (sim.status === "SIMULATION_FAILED" ? sim.revertReason : undefined);
 
   const currentAllowanceFormatted = ethers.formatUnits(currentAllowance, 6);
   const guardian: TxGuardianSummary = {
-    overallDecision: valid ? "PASS" : "BLOCKED",
+    overallDecision: !finalValid
+      ? "BLOCKED"
+      : sim.status === "SIMULATION_UNAVAILABLE"
+      ? "WARNING"
+      : "PASS",
     exactApproval: {
       passed: targetAmount <= ON_CHAIN_MAX_PER_TX_MUSDC,
       detail:
@@ -116,6 +143,7 @@ export async function buildAllowancePlan(params: {
       params.mode === "REVOKE"
         ? `Bạn đang thu hồi toàn bộ quyền chi tiêu mUSDC của AgentVaultExecutor (từ ${currentAllowanceFormatted} về 0 mUSDC).`
         : `Bạn đang cấp quyền cho AgentVaultExecutor chi tiêu tối đa ${targetAmount} mUSDC từ ví của bạn (không cấp Unlimited).`,
+    simulation: sim,
   };
 
   const planId = `plan_allow_${Date.now()}`;
@@ -157,9 +185,9 @@ export async function buildAllowancePlan(params: {
 
   return {
     planId,
-    decision,
-    valid,
-    reason,
+    decision: finalDecision,
+    valid: finalValid,
+    reason: finalReason,
     tokenIn: "mUSDC",
     tokenOut: "AVAX",
     amountIn: targetAmount.toString(),
