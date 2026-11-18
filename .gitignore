@@ -2,10 +2,11 @@
 node_modules/
 .pnpm-store/
 
-# Environment variables
+# Environment variables & Runtime data
 .env
 .env.local
 .env.*.local
+backend/data/*.json
 
 # Build & Cache
 dist/

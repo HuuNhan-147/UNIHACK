@@ -100,7 +100,7 @@ export async function validateActionAgainstPolicy(params: {
   amountInMusdc: number;
   slippageBps: number;
 }): Promise<PolicyValidationResult> {
-  const profile = getAgentProfile();
+  const profile = getAgentProfile(params.userAddress);
   const policy = profile.policy;
   const usage = getDailyUsage(params.userAddress);
   const checks: PolicyCheckItem[] = [];

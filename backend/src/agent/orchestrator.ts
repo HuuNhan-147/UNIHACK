@@ -56,7 +56,19 @@ Strict Behavioral Rules:
 4. Distinguish clearly between: (a) live on-chain Fuji data, (b) MockDEXRouter testnet quotes, (c) Avalanche Mainnet DeFiLlama reference yields, and (d) hypothetical simulations.
 5. For any write action (swap, set allowance, revoke allowance), use plan_swap, plan_set_allowance, or plan_revoke_allowance. Never claim a transaction has succeeded on-chain before the user signs and verifies it.
 6. If the user asks about a wallet action without a connected wallet address, ask them to connect their Avalanche wallet first.
-7. Respond concisely in the same language the user used (Vietnamese or English).`;
+7. Respond concisely in the same language the user used (Vietnamese or English).
+8. DO NOT call any tools for casual greetings, thank-yous, or general conceptual/workflow questions (e.g., "What is Tx Guardian?", "How does AgentVault work?", "Slippage là gì?"). Answer those directly and concisely. ONLY call tools when real wallet/on-chain data, protocol yields, risk math, or transaction plans are requested.`;
+
+export function detectCasualGreeting(message: string): "vi" | "en" | null {
+  const trimmed = message.trim();
+  if (/^(?:xin\s+chào|chào(?:\s+(?:bạn|copilot|bot|ai))?|cảm\s+ơn(?:\s+bạn)?)[!.,?\s]*$/iu.test(trimmed)) {
+    return "vi";
+  }
+  if (/^(?:hi|hello|hey|good\s+(?:morning|afternoon|evening)|thanks|thank\s+you)[!.,?\s]*$/iu.test(trimmed)) {
+    return "en";
+  }
+  return null;
+}
 
 export function detectForecastRequest(message: string): boolean {
   const lower = message.toLowerCase();
@@ -131,10 +143,111 @@ async function callGeminiGenerateContent(
   }
 }
 
+async function callGeminiStreamContent(
+  apiKey: string,
+  modelName: string,
+  contents: any[],
+  onChunk?: (chunk: string) => void,
+  systemInstruction = SYSTEM_INSTRUCTION,
+  withTools = true
+): Promise<any> {
+  if (!onChunk) {
+    return callGeminiGenerateContent(
+      apiKey,
+      modelName,
+      contents,
+      systemInstruction,
+      withTools
+    );
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse&key=${apiKey}`;
+    const body: any = {
+      system_instruction: { parts: [{ text: systemInstruction }] },
+      contents,
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 1024,
+      },
+    };
+    if (withTools) {
+      body.tools = [{ functionDeclarations: toolDeclarations }];
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok || !res.body) {
+      const errData: any = await res.json().catch(() => ({}));
+      const errMsg = errData?.error?.message || `HTTP ${res.status}`;
+      const err: any = new Error(errMsg);
+      err.status = res.status;
+      throw err;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullText = "";
+    const functionCallParts: any[] = [];
+
+    const processLine = (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) return;
+      const jsonStr = trimmed.slice(5).trim();
+      if (!jsonStr || jsonStr === "[DONE]") return;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const parts: any[] = parsed?.candidates?.[0]?.content?.parts || [];
+        for (const p of parts) {
+          if (typeof p.text === "string" && p.text.length > 0) {
+            fullText += p.text;
+            onChunk(p.text);
+          }
+          if (p.functionCall) {
+            functionCallParts.push(p);
+          }
+        }
+      } catch {
+        // Ignore partial SSE JSON fragments
+      }
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        processLine(line);
+      }
+    }
+    if (buffer.trim()) {
+      processLine(buffer);
+    }
+
+    const mergedParts: any[] = [];
+    if (fullText) mergedParts.push({ text: fullText });
+    mergedParts.push(...functionCallParts);
+    return { candidates: [{ content: { parts: mergedParts } }] };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function runAgentChat(
   message: string,
   userAddress?: string,
-  sessionId = "default"
+  sessionId = "default",
+  onChunk?: (chunk: string) => void
 ): Promise<AgentChatResponse> {
   // 1. Deterministic Intent & Prompt Injection Guard (runs BEFORE LLM)
   const intentCheck = detectMaliciousIntent(message);
@@ -192,8 +305,28 @@ export async function runAgentChat(
     };
   }
 
-  // 3. Check Agent Status before planning
-  const profile = getAgentProfile();
+  // 2.5. Fast-path for pure greetings / thank-yous (avoid unnecessary tool & RPC calls)
+  const greetingLang = detectCasualGreeting(message);
+  if (greetingLang) {
+    const reply =
+      greetingLang === "vi"
+        ? "Chào bạn! Mình là **AgentVault DeFi Copilot** trên Avalanche Fuji. Bạn có thể hỏi mình về:\n- **Số dư & giá Chainlink:** *\"Phân tích danh mục hiện tại của tôi\"*\n- **Rủi ro & Lãi suất:** *\"Tính Health Factor nếu thế chấp 10 AVAX vay 150 USD\"*\n- **Giao dịch an toàn qua Tx Guardian:** *\"Swap 10 mUSDC sang AVAX\"*"
+        : "Hello! I'm **AgentVault DeFi Copilot** on Avalanche Fuji. You can ask me to:\n- **Inspect Portfolio & Chainlink Price:** *\"Analyze my current portfolio allocation\"*\n- **Check Risk & Yields:** *\"Calculate Health Factor for 10 AVAX collateral and $150 debt\"*\n- **Prepare Safe Transactions:** *\"Swap 10 mUSDC to AVAX\"*";
+    appendSessionTurn(sessionId, message, reply);
+    return {
+      reply,
+      sessionId,
+      decision: "ROUTINE",
+      modelUsed: "greeting-fastpath",
+      toolsUsed: [],
+      executionEvidence: [
+        { step: "Greeting Fast-Path", durationMs: 1, status: "ok" },
+      ],
+    };
+  }
+
+  // 3. Check Agent Status before planning (isolated per wallet)
+  const profile = getAgentProfile(userAddress);
   if (profile.status !== "ACTIVE") {
     appendAuditLog({
       userAddress: userAddress || "UNCONNECTED",
@@ -244,7 +377,12 @@ export async function runAgentChat(
         ];
 
         const llmStart = Date.now();
-        let data = await callGeminiGenerateContent(activeKey, modelName, contents);
+        let data = await callGeminiStreamContent(
+          activeKey,
+          modelName,
+          contents,
+          onChunk
+        );
         executionEvidence.push({
           step: `LLM (${modelName})`,
           durationMs: Date.now() - llmStart,
@@ -302,7 +440,12 @@ export async function runAgentChat(
           contents.push({ role: "user", parts: functionResponseParts });
 
           const followUpStart = Date.now();
-          data = await callGeminiGenerateContent(activeKey, modelName, contents);
+          data = await callGeminiStreamContent(
+            activeKey,
+            modelName,
+            contents,
+            onChunk
+          );
           executionEvidence.push({
             step: `LLM Synthesis (${modelName})`,
             durationMs: Date.now() - followUpStart,
@@ -384,7 +527,8 @@ const policyDraftSchema = z.object({
 });
 
 export async function draftPolicyFromNaturalLanguage(
-  prompt: string
+  prompt: string,
+  userAddress?: string
 ): Promise<{
   draft: AgentPolicyConfig;
   executionMode: "ADVISORY" | "APPROVAL_REQUIRED";
@@ -396,7 +540,7 @@ export async function draftPolicyFromNaturalLanguage(
     throw new Error("GEMINI_API_KEY / GEMINI_API_KEYS is not configured.");
   }
 
-  const current = getAgentProfile();
+  const current = getAgentProfile(userAddress);
   const sys = `Extract a DeFi Copilot Allowance Policy configuration from the user's natural language request.
 Return ONLY valid JSON matching this schema:
 {

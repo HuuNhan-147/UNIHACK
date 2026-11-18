@@ -37,6 +37,7 @@ contract MockDEXRouter is ISwapRouter, Ownable, ReentrancyGuard {
     error NativeTransferFailed();
     error InvalidOraclePrice(int256 answer);
     error StaleOraclePrice(uint256 updatedAt, uint256 maxAge);
+    error IncompleteOracleRound(uint80 roundId, uint80 answeredInRound);
 
     event RateUpdated(uint256 newRate);
     event ExecutorUpdated(address indexed newExecutor);
@@ -67,9 +68,22 @@ contract MockDEXRouter is ISwapRouter, Ownable, ReentrancyGuard {
             return fallbackRateMusdcPerAvax;
         }
 
-        (, int256 answer, , uint256 updatedAt, ) = priceFeed.latestRoundData();
+        (
+            uint80 roundId,
+            int256 answer,
+            ,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        ) = priceFeed.latestRoundData();
+        if (roundId == 0 || answeredInRound < roundId) {
+            revert IncompleteOracleRound(roundId, answeredInRound);
+        }
         if (answer <= 0) revert InvalidOraclePrice(answer);
-        if (updatedAt == 0 || block.timestamp - updatedAt > maxOracleAge) {
+        if (
+            updatedAt == 0 ||
+            updatedAt > block.timestamp ||
+            block.timestamp - updatedAt > maxOracleAge
+        ) {
             revert StaleOraclePrice(updatedAt, maxOracleAge);
         }
 

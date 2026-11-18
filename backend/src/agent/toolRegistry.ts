@@ -260,11 +260,11 @@ export async function executeTool(
     }
     case "get_policy_rules": {
       const onChain = await getPolicyRules();
-      const profile = getAgentProfile();
       const addr =
         typeof (rawArgs as any)?.userAddress === "string"
           ? (rawArgs as any).userAddress
           : "";
+      const profile = getAgentProfile(addr || undefined);
       const dailyUsage = addr ? getDailyUsage(addr) : { spentMusdc: 0, txCount: 0 };
       return {
         onChain,

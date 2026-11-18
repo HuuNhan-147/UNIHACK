@@ -24,7 +24,6 @@ const envSchema = z.object({
   POLICY_ADDRESS: z.string().optional().default(""),
   ROUTER_ADDRESS: z.string().optional().default(""),
   EXECUTOR_ADDRESS: z.string().optional().default(""),
-  SPEND_GUARD_VAULT_ADDRESS: z.string().optional().default(""),
   CHAINLINK_AVAX_USD_FEED: z
     .string()
     .default("0x5498BB86BC934c8D34FDA08E81D444153d0D06aD"),

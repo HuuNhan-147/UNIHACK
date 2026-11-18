@@ -126,5 +126,12 @@ describe("MockDEXRouter Chainlink Oracle Integration", function () {
       router,
       "StaleOraclePrice"
     );
+
+    // Incomplete round: answeredInRound < roundId
+    await feed.setRoundData(5, 25_00000000n, latestBlock!.timestamp, 4);
+    await expect(router.rateMusdcPerAvax()).to.be.revertedWithCustomError(
+      router,
+      "IncompleteOracleRound"
+    );
   });
 });

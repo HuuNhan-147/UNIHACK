@@ -120,9 +120,9 @@ const DashboardContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0E14] text-slate-100">
-      <header className="border-b border-slate-800 bg-[#131722]/90 backdrop-blur sticky top-0 z-30">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
+    <div className="min-h-screen lg:h-screen lg:overflow-hidden flex flex-col bg-[#0B0E14] text-slate-100">
+      <header className="shrink-0 border-b border-slate-800 bg-[#131722]/90 backdrop-blur sticky top-0 z-30">
+        <div className="mx-auto flex w-full max-w-[1920px] flex-wrap items-center justify-between gap-3 px-4 py-2.5 lg:px-6">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
               <Shield className="h-5 w-5" />
@@ -223,19 +223,19 @@ const DashboardContent: React.FC = () => {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
+      <main className="mx-auto flex w-full max-w-[1920px] flex-1 min-h-0 flex-col gap-3 px-4 py-3 lg:px-6 overflow-y-auto lg:overflow-hidden">
         {bannerMsg && (
-          <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-300">
+          <div className="shrink-0 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-300">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{bannerMsg}</span>
           </div>
         )}
 
         {tab === "workspace" && (
-          <>
+          <div className="flex flex-1 min-h-0 flex-col gap-3">
             {/* Agent Status Strip */}
             {agentProfile && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-[#131722] px-5 py-3 text-xs">
+              <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-[#131722] px-4 py-2.5 text-xs">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="font-semibold text-white">
                     {agentProfile.name}
@@ -266,33 +266,30 @@ const DashboardContent: React.FC = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              <div className="lg:col-span-4 space-y-5">
-                <AssetAllocation
-                  assets={portfolio?.assets ?? []}
-                  totalValueUsd={portfolio?.totalValueUsd ?? 0}
-                />
-                <PolicyStatusCard policy={policy} />
-              </div>
-              <div className="lg:col-span-8">
-                <HoldingsTable
-                  assets={portfolio?.assets ?? []}
-                  loading={loadingData}
-                  priceSource={portfolio?.priceSource}
-                />
-              </div>
-            </div>
+            {/* Single-Viewport 2-Column Workspace */}
+            <div className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-12 gap-4">
+              {/* Left Column: Portfolio, Policy, Plan & History (scrollable if overflow) */}
+              <div className="lg:col-span-7 flex flex-col gap-4 lg:h-full lg:overflow-y-auto lg:pr-1">
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+                  <div className="xl:col-span-5 space-y-4">
+                    <AssetAllocation
+                      assets={portfolio?.assets ?? []}
+                      totalValueUsd={portfolio?.totalValueUsd ?? 0}
+                    />
+                    <PolicyStatusCard policy={policy} />
+                  </div>
+                  <div className="xl:col-span-7 space-y-4">
+                    <HoldingsTable
+                      assets={portfolio?.assets ?? []}
+                      loading={loadingData}
+                      priceSource={portfolio?.priceSource}
+                      fallbackReason={portfolio?.fallbackReason}
+                      policy={policy}
+                    />
+                    <TxHistoryTable records={history} />
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              <div className="lg:col-span-7">
-                <ChatPanel
-                  onSelectPlan={(p) => {
-                    setActivePlan(p);
-                    loadOnChainData();
-                  }}
-                />
-              </div>
-              <div className="lg:col-span-5 space-y-5">
                 <PlanCard
                   plan={activePlan}
                   onPlanUpdated={(p) => setActivePlan(p)}
@@ -302,21 +299,36 @@ const DashboardContent: React.FC = () => {
                     loadOnChainData();
                   }}
                 />
-                <TxHistoryTable records={history} />
+              </div>
+
+              {/* Right Column: Full-Height DeFi Copilot Chat */}
+              <div className="lg:col-span-5 lg:h-full min-h-0">
+                <ChatPanel
+                  onSelectPlan={(p) => {
+                    setActivePlan(p);
+                    loadOnChainData();
+                  }}
+                />
               </div>
             </div>
-          </>
+          </div>
         )}
 
         {tab === "config" && (
-          <AgentConfigPanel
-            profile={agentProfile}
-            dailyUsage={dailyUsage}
-            onUpdated={loadOnChainData}
-          />
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+            <AgentConfigPanel
+              profile={agentProfile}
+              dailyUsage={dailyUsage}
+              onUpdated={loadOnChainData}
+            />
+          </div>
         )}
 
-        {tab === "audit" && <AuditLogPanel logs={auditLogs} />}
+        {tab === "audit" && (
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+            <AuditLogPanel logs={auditLogs} />
+          </div>
+        )}
       </main>
 
       <TxPreviewModal

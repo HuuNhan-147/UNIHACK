@@ -2,13 +2,27 @@
   "network": "fuji",
   "chainId": 43113,
   "deployer": "0x305533Ab075f168ea052559b91453ca2522a0a33",
+  "chainlinkAvaxUsdFeed": "0x5498BB86BC934c8D34FDA08E81D444153d0D06aD",
   "contracts": {
     "MockERC20": "0xb8463e3a406998841d2c442EbbD247D3D4d36Ed1",
     "AgentVaultPolicy": "0x940d6C627C55F002A42eAc257d7A36dbDe4157e7",
+    "MockDEXRouter": "0x6ABC46F7D0ECaf22005b9d266B77e7AE9f79B8B8",
+    "AgentVaultExecutor": "0x927937eC37b343290b22893f90C00E8eE4AE6582"
+  },
+  "previousContracts": {
     "MockDEXRouter": "0x6543093442989Ee42f440b5d1B15ae178d1b807D",
-    "AgentVaultExecutor": "0x80893169CD4677b40c0Eb88425A98FE80B688E36",
-    "SpendGuardVault": "0xCc9Eb939085Ee9AC39637b610943D840a8D5b6Ae"
+    "AgentVaultExecutor": "0x80893169CD4677b40c0Eb88425A98FE80B688E36"
+  },
+  "upgradeTxHashes": {
+    "reclaimOldRouterLiquidity": "0xc0e4e49d7c3dc73bd8d477f6324d862373ba76e19a8dac19b04f11d327f5bfea",
+    "deployRouter": "0x6cefd4872a1d2fb484a131c39d0d503612e6be1f39b3012fbfd1b6bcf2362f8d",
+    "deployExecutor": "0x1bb0300e8ba5246c9a577b58efbff5d4ba403fc236d948f7d06c4570d8579213",
+    "setExecutor": "0xd207b2b0d6b21c34cda52e383828ad75e2481103a74709362aade2b74048faa4",
+    "setPriceFeed": "0x574f6f4ca42bf7d605634080a9c5f805a81228a878f17e2190894bdd05d6e685",
+    "whitelistNewRouter": "0x9bdc40b83fbd8cdc401b66de73938c1a124b5de7f415e29badeef6995804253c",
+    "delistOldRouter": "0x4aa035e9daecdeeac5cdbd9ed2198d2fe3632253e537245677f7b6748dd0dee1",
+    "seedLiquidity": "0xeada38f3ad577163f86928f6695cd045818e695be394134f14401e172eec38b4"
   },
   "deployedAt": "2026-11-16T10:42:05.264Z",
-  "spendGuardDeployedAt": "2026-11-17T09:30:36.624Z"
+  "upgradedAt": "2026-11-18T03:11:09.432Z"
 }

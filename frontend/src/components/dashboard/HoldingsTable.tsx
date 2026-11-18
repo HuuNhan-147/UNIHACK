@@ -1,16 +1,20 @@
 import React from "react";
-import { AvaxPriceSource, PortfolioAsset } from "../../services/api";
+import { AvaxPriceSource, PolicyData, PortfolioAsset } from "../../services/api";
 
 interface Props {
   assets: PortfolioAsset[];
   loading: boolean;
   priceSource?: AvaxPriceSource;
+  fallbackReason?: string;
+  policy?: PolicyData | null;
 }
 
 export const HoldingsTable: React.FC<Props> = ({
   assets,
   loading,
   priceSource,
+  fallbackReason,
+  policy,
 }) => {
   return (
     <div className="rounded-2xl border border-slate-800 bg-[#131722] p-5">
@@ -39,13 +43,22 @@ export const HoldingsTable: React.FC<Props> = ({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-[11px] text-slate-400">
-            Router: Chainlink-Backed / ISwapRouter
+            {policy?.oracleEnabled
+              ? `Chainlink Router: $${policy.activeRateMusdcPerAvax}/AVAX · Pool ${policy.routerLiquidityAvax} AVAX`
+              : policy?.activeRateMusdcPerAvax
+                ? `Fallback Router: ${policy.activeRateMusdcPerAvax} mUSDC/AVAX`
+                : "Router: Syncing Fuji..."}
           </span>
           {loading && (
             <span className="text-xs text-blue-400 animate-pulse">Syncing...</span>
           )}
         </div>
       </div>
+      {fallbackReason && priceSource !== "CHAINLINK_FUJI" && (
+        <p className="mb-3 rounded-lg bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-300">
+          Oracle Fallback Active: {fallbackReason}
+        </p>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>

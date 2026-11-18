@@ -72,9 +72,8 @@ Avalanche Fuji Smart Contracts (Chain ID: 43113)
 * **Triển khai hiện tại (`contracts/deployments/fuji.json`):**
   * `MockERC20 (mUSDC)`: `0xb8463e3a406998841d2c442EbbD247D3D4d36Ed1`
   * `AgentVaultPolicy`: `0x940d6C627C55F002A42eAc257d7A36dbDe4157e7`
-  * `MockDEXRouter`: `0x6543093442989Ee42f440b5d1B15ae178d1b807D`
-  * `AgentVaultExecutor`: `0x80893169CD4677b40c0Eb88425A98FE80B688E36`
-  * `SpendGuardVault` *(legacy reference)*: `0xCc9Eb939085Ee9AC39637b610943D840a8D5b6Ae`
+  * `MockDEXRouter` *(Chainlink-backed)*: `0x6ABC46F7D0ECaf22005b9d266B77e7AE9f79B8B8`
+  * `AgentVaultExecutor`: `0x927937eC37b343290b22893f90C00E8eE4AE6582`
 
 ---
 

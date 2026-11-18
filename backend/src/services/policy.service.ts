@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import { env } from "../config/env";
-import { getContracts, withRpcTimeout } from "./blockchain.service";
+import { getContracts, provider, withRpcTimeout } from "./blockchain.service";
 
 export interface PolicyStatus {
   maxAmountPerTxMusdc: string;
@@ -9,10 +9,13 @@ export interface PolicyStatus {
   musdcAllowed: boolean;
   nativeAvaxAllowed: boolean;
   routerAllowed: boolean;
+  oracleEnabled: boolean;
+  activeRateMusdcPerAvax: string;
+  routerLiquidityAvax: string;
 }
 
 export async function getPolicyRules(): Promise<PolicyStatus> {
-  const { policy } = getContracts();
+  const { policy, router } = getContracts();
 
   const [
     maxAmountRaw,
@@ -21,6 +24,9 @@ export async function getPolicyRules(): Promise<PolicyStatus> {
     musdcAllowed,
     nativeAvaxAllowed,
     routerAllowed,
+    oracleEnabled,
+    rateRaw,
+    routerLiqWei,
   ] = await withRpcTimeout(
     Promise.all([
       policy.maxAmountPerTx(),
@@ -29,8 +35,11 @@ export async function getPolicyRules(): Promise<PolicyStatus> {
       policy.allowedTokens(env.MUSDC_ADDRESS),
       policy.allowedTokens(ethers.ZeroAddress),
       policy.allowedRouters(env.ROUTER_ADDRESS),
+      router.useOracle().catch(() => false),
+      router.rateMusdcPerAvax(),
+      provider.getBalance(env.ROUTER_ADDRESS),
     ]),
-    "Fetch policy rules"
+    "Fetch policy & router rules"
   );
 
   return {
@@ -40,6 +49,9 @@ export async function getPolicyRules(): Promise<PolicyStatus> {
     musdcAllowed: Boolean(musdcAllowed),
     nativeAvaxAllowed: Boolean(nativeAvaxAllowed),
     routerAllowed: Boolean(routerAllowed),
+    oracleEnabled: Boolean(oracleEnabled),
+    activeRateMusdcPerAvax: Number(ethers.formatUnits(rateRaw, 6)).toFixed(4),
+    routerLiquidityAvax: Number(ethers.formatEther(routerLiqWei)).toFixed(4),
   };
 }
 

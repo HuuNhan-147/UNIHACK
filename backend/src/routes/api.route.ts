@@ -1,10 +1,11 @@
 import { Router } from "express";
+import { ethers } from "ethers";
 import { z } from "zod";
 import { areContractsConfigured } from "../config/env";
 import { getPortfolio } from "../services/portfolio.service";
 import { getPolicyRules } from "../services/policy.service";
 import { buildSwapPlan } from "../services/swapPlanner.service";
-import { getOnChainHistory } from "../services/history.service";
+import { getUnifiedDashboardHistory } from "../services/history.service";
 import {
   draftPolicyFromNaturalLanguage,
   runAgentChat,
@@ -23,6 +24,46 @@ import { validatePolicyConfigUpdate } from "../services/deterministicPolicy.serv
 import { verifyAndRecordTransaction } from "../services/postTx.service";
 
 export const apiRouter = Router();
+
+const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
+export function buildProfileAuthMessage(
+  userAddress: string,
+  timestamp: number
+): string {
+  return `AgentVault Policy Update\nWallet: ${userAddress.toLowerCase()}\nTimestamp: ${timestamp}`;
+}
+
+export function verifyProfileSignature(params: {
+  userAddress: string;
+  timestamp: number;
+  signature: string;
+  nowMs?: number;
+}): { valid: boolean; reason?: string } {
+  if (!ethers.isAddress(params.userAddress)) {
+    return { valid: false, reason: "Invalid wallet address." };
+  }
+  const now = params.nowMs ?? Date.now();
+  if (Math.abs(now - params.timestamp) > SIGNATURE_MAX_AGE_MS) {
+    return {
+      valid: false,
+      reason: "Signature expired or invalid timestamp window.",
+    };
+  }
+  try {
+    const msg = buildProfileAuthMessage(params.userAddress, params.timestamp);
+    const recovered = ethers.verifyMessage(msg, params.signature);
+    if (recovered.toLowerCase() !== params.userAddress.toLowerCase()) {
+      return {
+        valid: false,
+        reason: "Signature does not match target wallet address.",
+      };
+    }
+    return { valid: true };
+  } catch {
+    return { valid: false, reason: "Malformed wallet signature." };
+  }
+}
 
 apiRouter.get("/health", (_req, res) => {
   res.json({
@@ -53,18 +94,18 @@ apiRouter.get("/policy", async (_req, res) => {
 
 apiRouter.get("/history/:address", async (req, res) => {
   try {
-    const data = await getOnChainHistory(req.params.address);
-    res.json({ records: data });
+    const result = await getUnifiedDashboardHistory(req.params.address);
+    res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err?.message || "Failed to fetch history" });
   }
 });
 
-// === Agent Profile & Policy Builder ===
+// === Per-Wallet Agent Profile & Policy Builder ===
 apiRouter.get("/agent/profile", (req, res) => {
   const userAddress =
     typeof req.query.userAddress === "string" ? req.query.userAddress : "";
-  const profile = getAgentProfile();
+  const profile = getAgentProfile(userAddress || undefined);
   const dailyUsage = userAddress
     ? getDailyUsage(userAddress)
     : { spentMusdc: 0, txCount: 0 };
@@ -72,6 +113,9 @@ apiRouter.get("/agent/profile", (req, res) => {
 });
 
 const updateProfileSchema = z.object({
+  userAddress: z.string().min(42).max(42),
+  timestamp: z.number().int().positive(),
+  signature: z.string().min(20),
   name: z.string().min(2).max(80).optional(),
   description: z.string().max(300).optional(),
   status: z.enum(["ACTIVE", "PAUSED", "REVOKED"]).optional(),
@@ -94,16 +138,27 @@ const updateProfileSchema = z.object({
 apiRouter.put("/agent/profile", (req, res) => {
   try {
     const parsed = updateProfileSchema.parse(req.body);
+    const auth = verifyProfileSignature({
+      userAddress: parsed.userAddress,
+      timestamp: parsed.timestamp,
+      signature: parsed.signature,
+    });
+    if (!auth.valid) {
+      return res.status(401).json({ error: auth.reason });
+    }
+
     if (parsed.policy) {
       const check = validatePolicyConfigUpdate(parsed.policy);
       if (!check.valid) {
         return res.status(400).json({ error: check.errors.join(" ") });
       }
     }
-    const updated = updateAgentProfile(parsed);
+
+    const { userAddress, timestamp: _ts, signature: _sig, ...patch } = parsed;
+    const updated = updateAgentProfile(userAddress, patch);
     appendAuditLog({
-      userAddress: "ADMIN_USER",
-      userRequest: "Update Agent Profile & Policy",
+      userAddress,
+      userRequest: "Signed Agent Profile & Policy Update",
       governanceDecision: "CONFIG_UPDATED",
       policyDecision: `MaxSwap=${updated.policy.maxAmountPerSwapMusdc}, Daily=${updated.policy.dailySpendingLimitMusdc}, Status=${updated.status}`,
     });
@@ -115,8 +170,13 @@ apiRouter.put("/agent/profile", (req, res) => {
 
 apiRouter.post("/agent/policy-draft", async (req, res) => {
   try {
-    const { prompt } = z.object({ prompt: z.string().min(3).max(500) }).parse(req.body);
-    const result = await draftPolicyFromNaturalLanguage(prompt);
+    const { prompt, userAddress } = z
+      .object({
+        prompt: z.string().min(3).max(500),
+        userAddress: z.string().optional(),
+      })
+      .parse(req.body);
+    const result = await draftPolicyFromNaturalLanguage(prompt, userAddress);
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err?.message || "Failed to draft policy" });
@@ -226,6 +286,32 @@ apiRouter.post("/agent/chat", async (req, res) => {
     res.json(response);
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "AI Agent error" });
+  }
+});
+
+apiRouter.post("/agent/chat-stream", async (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  const sendEvent = (event: string, payload: unknown) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+  };
+
+  try {
+    const parsed = agentChatSchema.parse(req.body);
+    const response = await runAgentChat(
+      parsed.message,
+      parsed.userAddress,
+      parsed.sessionId || "default",
+      (chunk) => sendEvent("chunk", { chunk })
+    );
+    sendEvent("done", response);
+  } catch (err: any) {
+    sendEvent("error", { error: err?.message || "AI Agent stream error" });
+  } finally {
+    res.end();
   }
 });
 

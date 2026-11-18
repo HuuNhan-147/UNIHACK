@@ -28,7 +28,7 @@ export async function buildAllowancePlan(params: {
     throw new Error("Allowance amount must be greater than 0");
   }
 
-  const profile = getAgentProfile();
+  const profile = getAgentProfile(params.userAddress);
   const { musdc } = getContracts();
   const targetAmount = params.mode === "REVOKE" ? 0 : params.amountMusdc;
   const amountRaw =

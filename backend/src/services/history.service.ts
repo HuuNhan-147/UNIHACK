@@ -1,14 +1,16 @@
 import { ethers } from "ethers";
+import { env } from "../config/env";
 import { getContracts, provider, withRpcTimeout } from "./blockchain.service";
 
 export interface OnChainTxRecord {
   hash: string;
   action: string;
   amount: string;
-  status: "SUCCESS";
+  status: "SUCCESS" | "REVERTED";
   detail: string;
   timestamp: string;
-  blockNumber: number;
+  blockNumber?: number;
+  sortTime?: number;
 }
 
 export async function getOnChainHistory(
@@ -42,12 +44,13 @@ export async function getOnChainHistory(
         action: "Swap mUSDC → AVAX",
         amount: `${amountIn} mUSDC → ${Number(amountOut).toFixed(4)} AVAX`,
         status: "SUCCESS" as const,
-        detail: "Verified On-chain (SwapExecuted)",
+        detail: "Verified On-chain (SwapExecuted · Fuji 43113)",
         timestamp: ts ? new Date(ts * 1000).toLocaleTimeString() : "On-chain",
         blockNumber: log.blockNumber,
+        sortTime: ts || 0,
       };
     })
-    .sort((a, b) => b.blockNumber - a.blockNumber);
+    .sort((a, b) => (b.blockNumber ?? 0) - (a.blockNumber ?? 0));
 }
 
 export interface GlacierTxSummary {
@@ -80,7 +83,7 @@ export async function getAvalancheTxHistory(userAddress: string): Promise<{
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 5000);
-      const url = `https://glacier-api.avax.network/v1/chains/43113/addresses/${userAddress}/transactions?pageSize=8`;
+      const url = `https://glacier-api.avax.network/v1/chains/43113/addresses/${userAddress}/transactions?pageSize=12`;
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
       if (!res.ok) return { ok: false, txs: [] };
@@ -88,17 +91,20 @@ export async function getAvalancheTxHistory(userAddress: string): Promise<{
       const items: any[] = Array.isArray(data?.transactions)
         ? data.transactions
         : [];
-      const txs: GlacierTxSummary[] = items.map((t) => ({
-        txHash: String(t?.nativeTransaction?.txHash || ""),
-        blockTimestamp: Number(t?.nativeTransaction?.blockTimestamp || 0),
-        txStatus: String(t?.nativeTransaction?.txStatus || "unknown"),
-        from: String(t?.nativeTransaction?.from?.address || ""),
-        to: String(t?.nativeTransaction?.to?.address || ""),
-        valueAvax: ethers.formatEther(
-          BigInt(t?.nativeTransaction?.value || "0")
-        ),
-        methodName: t?.nativeTransaction?.method?.methodName || undefined,
-      }));
+      const txs: GlacierTxSummary[] = items
+        .map((t) => {
+          const native = t?.nativeTransaction || t;
+          return {
+            txHash: String(native?.txHash || ""),
+            blockTimestamp: Number(native?.blockTimestamp || 0),
+            txStatus: String(native?.txStatus ?? "1"),
+            from: String(native?.from?.address || native?.from || ""),
+            to: String(native?.to?.address || native?.to || ""),
+            valueAvax: ethers.formatEther(BigInt(native?.value || "0")),
+            methodName: native?.method?.methodName || undefined,
+          };
+        })
+        .filter((tx) => tx.txHash.startsWith("0x"));
       return { ok: true, txs };
     } catch {
       return { ok: false, txs: [] };
@@ -117,7 +123,105 @@ export async function getAvalancheTxHistory(userAddress: string): Promise<{
     glacierTransactions: glacierRes.txs,
     swapExecutedEvents,
     note: glacierRes.ok
-      ? "Combined Avalanche Fuji Glacier API history and AgentVaultExecutor SwapExecuted events (last ~95 blocks)."
+      ? "Combined Avalanche Fuji Glacier API history and AgentVaultExecutor SwapExecuted events."
       : "Glacier API unavailable; showing AgentVaultExecutor SwapExecuted events from Fuji RPC (last ~95 blocks).",
+  };
+}
+
+function classifyGlacierTx(tx: GlacierTxSummary): {
+  action: string;
+  amount: string;
+  detail: string;
+} {
+  const toLower = tx.to.toLowerCase();
+  const execLower = (env.EXECUTOR_ADDRESS || "").toLowerCase();
+  const musdcLower = (env.MUSDC_ADDRESS || "").toLowerCase();
+  const method = (tx.methodName || "").toLowerCase();
+
+  if (toLower === execLower || method.includes("executeswap")) {
+    return {
+      action: "AgentVault Swap",
+      amount: Number(tx.valueAvax) > 0 ? `${Number(tx.valueAvax).toFixed(4)} AVAX` : "mUSDC → AVAX",
+      detail: "Indexed via Avalanche Glacier (Fuji 43113)",
+    };
+  }
+  if (toLower === musdcLower) {
+    if (method.includes("faucet")) {
+      return {
+        action: "Faucet Mint",
+        amount: "mUSDC",
+        detail: "MockERC20 Faucet (Fuji 43113)",
+      };
+    }
+    return {
+      action: "mUSDC Allowance / Token Tx",
+      amount: "ERC-20",
+      detail: `${tx.methodName || "Contract Call"} · Fuji 43113`,
+    };
+  }
+  if (!tx.to) {
+    return {
+      action: "Contract Deployment",
+      amount: `${Number(tx.valueAvax).toFixed(4)} AVAX`,
+      detail: "Avalanche Fuji (43113)",
+    };
+  }
+  return {
+    action: tx.methodName ? `Call: ${tx.methodName}` : "Fuji Transaction",
+    amount: `${Number(tx.valueAvax).toFixed(4)} AVAX`,
+    detail: `To ${tx.to.slice(0, 8)}...${tx.to.slice(-4)} (Fuji 43113)`,
+  };
+}
+
+export function deduplicateHistoryRecords(
+  swapEvents: OnChainTxRecord[],
+  glacierTxs: GlacierTxSummary[]
+): OnChainTxRecord[] {
+  const byHash = new Map<string, OnChainTxRecord>();
+
+  for (const ev of swapEvents) {
+    if (!ev.hash) continue;
+    byHash.set(ev.hash.toLowerCase(), ev);
+  }
+
+  for (const g of glacierTxs) {
+    const key = g.txHash.toLowerCase();
+    if (!key || byHash.has(key)) continue;
+    const info = classifyGlacierTx(g);
+    const failed = g.txStatus === "0" || g.txStatus.toLowerCase() === "failed";
+    byHash.set(key, {
+      hash: g.txHash,
+      action: info.action,
+      amount: info.amount,
+      status: failed ? "REVERTED" : "SUCCESS",
+      detail: info.detail,
+      timestamp: g.blockTimestamp
+        ? new Date(g.blockTimestamp * 1000).toLocaleTimeString()
+        : "Fuji",
+      sortTime: g.blockTimestamp || 0,
+    });
+  }
+
+  return Array.from(byHash.values()).sort(
+    (a, b) => (b.sortTime ?? 0) - (a.sortTime ?? 0)
+  );
+}
+
+export async function getUnifiedDashboardHistory(
+  userAddress: string
+): Promise<{
+  records: OnChainTxRecord[];
+  glacierAvailable: boolean;
+  sourceNote: string;
+}> {
+  const combined = await getAvalancheTxHistory(userAddress);
+  const records = deduplicateHistoryRecords(
+    combined.swapExecutedEvents,
+    combined.glacierTransactions
+  );
+  return {
+    records,
+    glacierAvailable: combined.glacierAvailable,
+    sourceNote: combined.note,
   };
 }

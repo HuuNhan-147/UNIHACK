@@ -2,10 +2,12 @@ import React, { useState, useEffect } from "react";
 import { Sliders, Sparkles, Save, ShieldOff, Play, Pause } from "lucide-react";
 import {
   AgentProfile,
+  buildProfileAuthMessage,
   DailyUsageRecord,
   draftPolicyFromNL,
   saveAgentProfile,
 } from "../../services/api";
+import { useWallet, decodeWeb3Error } from "../../context/WalletContext";
 
 interface Props {
   profile: AgentProfile | null;
@@ -18,6 +20,7 @@ export const AgentConfigPanel: React.FC<Props> = ({
   dailyUsage,
   onUpdated,
 }) => {
+  const { address, signMessage } = useWallet();
   const [form, setForm] = useState<AgentProfile | null>(profile);
   const [nlPrompt, setNlPrompt] = useState("");
   const [nlNotes, setNlNotes] = useState<string | null>(null);
@@ -40,10 +43,23 @@ export const AgentConfigPanel: React.FC<Props> = ({
   }
 
   const handleSave = async () => {
+    if (!address) {
+      setMsg({
+        type: "err",
+        text: "Vui lòng Connect Wallet trước để ký xác thực chủ sở hữu Policy.",
+      });
+      return;
+    }
     setSaving(true);
     setMsg(null);
     try {
+      const timestamp = Date.now();
+      const authMessage = buildProfileAuthMessage(address, timestamp);
+      const signature = await signMessage(authMessage);
       await saveAgentProfile({
+        userAddress: address,
+        timestamp,
+        signature,
         name: form.name,
         description: form.description,
         status: form.status,
@@ -51,10 +67,10 @@ export const AgentConfigPanel: React.FC<Props> = ({
         riskProfile: form.riskProfile,
         policy: form.policy,
       });
-      setMsg({ type: "ok", text: "Đã lưu cấu hình Agent & Policy." });
+      setMsg({ type: "ok", text: "Đã xác thực chữ ký ví & lưu cấu hình Policy riêng cho ví của bạn." });
       onUpdated();
     } catch (err: any) {
-      setMsg({ type: "err", text: err?.message || "Lỗi lưu cấu hình." });
+      setMsg({ type: "err", text: decodeWeb3Error(err) });
     } finally {
       setSaving(false);
     }
@@ -66,7 +82,7 @@ export const AgentConfigPanel: React.FC<Props> = ({
     setMsg(null);
     setNlNotes(null);
     try {
-      const res = await draftPolicyFromNL(nlPrompt);
+      const res = await draftPolicyFromNL(nlPrompt, address ?? undefined);
       setForm((prev) =>
         prev
           ? {
@@ -96,13 +112,25 @@ export const AgentConfigPanel: React.FC<Props> = ({
   };
 
   const setStatusQuick = async (status: "ACTIVE" | "PAUSED" | "REVOKED") => {
+    if (!address) {
+      setMsg({
+        type: "err",
+        text: "Vui lòng Connect Wallet trước để ký thay đổi trạng thái Agent.",
+      });
+      return;
+    }
     setSaving(true);
+    setMsg(null);
     try {
-      await saveAgentProfile({ status });
-      setMsg({ type: "ok", text: `Đã chuyển trạng thái Agent sang ${status}.` });
+      const timestamp = Date.now();
+      const signature = await signMessage(
+        buildProfileAuthMessage(address, timestamp)
+      );
+      await saveAgentProfile({ userAddress: address, timestamp, signature, status });
+      setMsg({ type: "ok", text: `Đã ký xác thực & chuyển trạng thái Agent sang ${status}.` });
       onUpdated();
     } catch (err: any) {
-      setMsg({ type: "err", text: err?.message });
+      setMsg({ type: "err", text: decodeWeb3Error(err) });
     } finally {
       setSaving(false);
     }

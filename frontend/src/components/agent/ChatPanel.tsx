@@ -2,12 +2,14 @@ import React, { useState } from "react";
 import { Send, Bot, User, Sparkles, ShieldAlert } from "lucide-react";
 import {
   resetAgentSession,
-  sendAgentMessage,
+  sendAgentMessageStream,
   SwapPlan,
   GovernanceDecision,
   ExecutionStepEvidence,
 } from "../../services/api";
 import { useWallet } from "../../context/WalletContext";
+import { RichText } from "../common/RichText";
+import { CopilotProgress } from "./CopilotProgress";
 
 interface Message {
   role: "user" | "assistant";
@@ -34,51 +36,6 @@ const DECISION_STYLES: Record<GovernanceDecision, string> = {
   REJECT: "bg-red-500/15 text-red-400 border-red-500/30",
   ESCALATE: "bg-orange-500/15 text-orange-300 border-orange-500/30",
 };
-
-function renderInlineMarkdown(text: string): React.ReactNode[] {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return (
-        <strong key={i} className="font-semibold text-white">
-          {part.slice(2, -2)}
-        </strong>
-      );
-    }
-    if (part.startsWith("`") && part.endsWith("`")) {
-      return (
-        <code
-          key={i}
-          className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[12px] text-blue-300"
-        >
-          {part.slice(1, -1)}
-        </code>
-      );
-    }
-    return <React.Fragment key={i}>{part}</React.Fragment>;
-  });
-}
-
-function renderFormattedMessage(text: string): React.ReactNode {
-  const lines = text.split("\n");
-  return (
-    <div className="space-y-1.5">
-      {lines.map((line, idx) => {
-        const trimmed = line.trim();
-        if (!trimmed) return <div key={idx} className="h-1" />;
-        if (/^[-*]\s+/.test(trimmed)) {
-          return (
-            <div key={idx} className="flex items-start gap-2 pl-1">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
-              <span>{renderInlineMarkdown(trimmed.replace(/^[-*]\s+/, ""))}</span>
-            </div>
-          );
-        }
-        return <p key={idx}>{renderInlineMarkdown(line)}</p>;
-      })}
-    </div>
-  );
-}
 
 export const ChatPanel: React.FC<Props> = ({ onSelectPlan }) => {
   const { address } = useWallet();
@@ -114,15 +71,33 @@ export const ChatPanel: React.FC<Props> = ({ onSelectPlan }) => {
     setInput("");
     setLoading(true);
 
+    let streamStarted = false;
     try {
-      const res = await sendAgentMessage(
+      const res = await sendAgentMessageStream(
         trimmed,
         address ?? undefined,
-        sessionId
+        sessionId,
+        (chunk) => {
+          setMessages((prev) => {
+            if (!streamStarted) {
+              streamStarted = true;
+              return [...prev, { role: "assistant", text: chunk }];
+            }
+            const next = [...prev];
+            const lastIdx = next.length - 1;
+            if (lastIdx >= 0 && next[lastIdx].role === "assistant") {
+              next[lastIdx] = {
+                ...next[lastIdx],
+                text: next[lastIdx].text + chunk,
+              };
+            }
+            return next;
+          });
+        }
       );
-      setMessages((prev) => [
-        ...prev,
-        {
+
+      setMessages((prev) => {
+        const finalMsg: Message = {
           role: "assistant",
           text: res.reply,
           decision: res.decision,
@@ -131,8 +106,14 @@ export const ChatPanel: React.FC<Props> = ({ onSelectPlan }) => {
           executionEvidence: res.executionEvidence,
           swapPlan: res.swapPlan,
           securityEvent: res.securityEvent,
-        },
-      ]);
+        };
+        if (streamStarted && prev[prev.length - 1]?.role === "assistant") {
+          const next = [...prev];
+          next[next.length - 1] = finalMsg;
+          return next;
+        }
+        return [...prev, finalMsg];
+      });
       if (res.swapPlan) {
         onSelectPlan(res.swapPlan);
       }
@@ -150,7 +131,7 @@ export const ChatPanel: React.FC<Props> = ({ onSelectPlan }) => {
   };
 
   return (
-    <div className="flex flex-col rounded-2xl border border-slate-800 bg-[#131722] h-[480px]">
+    <div className="flex flex-col rounded-2xl border border-slate-800 bg-[#131722] h-[500px] lg:h-full min-h-0">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-5 py-3.5">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-blue-400" />
@@ -180,10 +161,10 @@ export const ChatPanel: React.FC<Props> = ({ onSelectPlan }) => {
           </button>
           <button
             type="button"
-            onClick={() => submitPrompt("Swap 10 mUSDC sang AVAX")}
+            onClick={() => submitPrompt("Swap 1 mUSDC sang AVAX")}
             className="rounded-lg bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-400 hover:bg-emerald-500/20"
           >
-            Write: Swap 10
+            Write: Swap 1
           </button>
           <button
             type="button"
@@ -265,7 +246,7 @@ export const ChatPanel: React.FC<Props> = ({ onSelectPlan }) => {
                 </div>
               )}
 
-              {renderFormattedMessage(m.text)}
+              <RichText content={m.text} isUser={m.role === "user"} />
 
               {m.executionEvidence && m.executionEvidence.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -297,11 +278,7 @@ export const ChatPanel: React.FC<Props> = ({ onSelectPlan }) => {
             )}
           </div>
         ))}
-        {loading && (
-          <div className="text-xs text-slate-400 animate-pulse px-2">
-            AI đang phân tích danh mục và kiểm tra Deterministic Policy Engine...
-          </div>
-        )}
+        {loading && <CopilotProgress />}
       </div>
 
       <form

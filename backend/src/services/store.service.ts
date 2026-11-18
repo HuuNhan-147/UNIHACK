@@ -18,6 +18,7 @@ export interface AgentPolicyConfig {
 
 export interface AgentProfile {
   id: string;
+  ownerAddress: string;
   name: string;
   description: string;
   status: AgentStatus;
@@ -54,7 +55,12 @@ export interface StructuredPlanRecord {
   };
   policyCheck: {
     decision: "ALLOW" | "REQUIRE_APPROVAL" | "ESCALATE" | "REJECT";
-    checks: Array<{ name: string; passed: boolean; layer: "ON_CHAIN" | "BACKEND"; detail: string }>;
+    checks: Array<{
+      name: string;
+      passed: boolean;
+      layer: "ON_CHAIN" | "BACKEND";
+      detail: string;
+    }>;
     reason?: string;
   };
   createdAt: string;
@@ -76,7 +82,7 @@ export interface AuditLogEvent {
 }
 
 interface VaultStoreData {
-  agentProfile: AgentProfile;
+  profiles: Record<string, AgentProfile>;
   dailyUsage: Record<string, Record<string, DailyUsageRecord>>;
   plans: Record<string, StructuredPlanRecord>;
   auditLogs: AuditLogEvent[];
@@ -85,29 +91,37 @@ interface VaultStoreData {
 const DATA_DIR = path.resolve(__dirname, "../../data");
 const STORE_PATH = path.join(DATA_DIR, "vault-store.json");
 
-function createDefaultStore(): VaultStoreData {
+export function createDefaultProfile(ownerAddress = "default"): AgentProfile {
   const now = new Date().toISOString();
+  const normalized = ownerAddress.toLowerCase();
   return {
-    agentProfile: {
-      id: "agent_default",
-      name: "AgentVault Guardian",
-      description:
-        "Policy-governed DeFi portfolio assistant on Avalanche Fuji Testnet",
-      status: "ACTIVE",
-      executionMode: "APPROVAL_REQUIRED",
-      riskProfile: "BALANCED",
-      policy: {
-        maxAmountPerSwapMusdc: 300,
-        dailySpendingLimitMusdc: 600,
-        maxTransactionsPerDay: 5,
-        maxSlippageBps: 200,
-        allowedTokens: ["mUSDC", "AVAX"],
-        allowedPairs: ["mUSDC->AVAX"],
-        allowedRouters: ["MockDEXRouter"],
-        expiresAt: null,
-      },
-      createdAt: now,
-      updatedAt: now,
+    id: `agent_${normalized}`,
+    ownerAddress: normalized,
+    name: "AgentVault Copilot",
+    description:
+      "Non-custodial DeFi Copilot governed by per-wallet policy & on-chain guardrails",
+    status: "ACTIVE",
+    executionMode: "APPROVAL_REQUIRED",
+    riskProfile: "BALANCED",
+    policy: {
+      maxAmountPerSwapMusdc: 300,
+      dailySpendingLimitMusdc: 600,
+      maxTransactionsPerDay: 5,
+      maxSlippageBps: 200,
+      allowedTokens: ["mUSDC", "AVAX"],
+      allowedPairs: ["mUSDC->AVAX"],
+      allowedRouters: ["ChainlinkRouter"],
+      expiresAt: null,
+    },
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function createDefaultStore(): VaultStoreData {
+  return {
+    profiles: {
+      default: createDefaultProfile("default"),
     },
     dailyUsage: {},
     plans: {},
@@ -123,8 +137,16 @@ function readStore(): VaultStoreData {
     return initial;
   }
   try {
-    const raw = fs.readFileSync(STORE_PATH, "utf8");
-    return JSON.parse(raw) as VaultStoreData;
+    const raw = JSON.parse(fs.readFileSync(STORE_PATH, "utf8"));
+    if (!raw.profiles || typeof raw.profiles !== "object") {
+      raw.profiles = {
+        default: raw.agentProfile
+          ? { ...raw.agentProfile, ownerAddress: "default" }
+          : createDefaultProfile("default"),
+      };
+      delete raw.agentProfile;
+    }
+    return raw as VaultStoreData;
   } catch {
     const initial = createDefaultStore();
     fs.writeFileSync(STORE_PATH, JSON.stringify(initial, null, 2));
@@ -141,24 +163,33 @@ export function getUtcDateKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function getAgentProfile(): AgentProfile {
-  return readStore().agentProfile;
+export function getAgentProfile(userAddress?: string): AgentProfile {
+  const store = readStore();
+  const key = userAddress && userAddress.trim()
+    ? userAddress.trim().toLowerCase()
+    : "default";
+  return store.profiles[key] ?? createDefaultProfile(key);
 }
 
 export function updateAgentProfile(
-  patch: Partial<Omit<AgentProfile, "id" | "createdAt">>
+  userAddress: string,
+  patch: Partial<Omit<AgentProfile, "id" | "ownerAddress" | "createdAt">>
 ): AgentProfile {
   const store = readStore();
-  store.agentProfile = {
-    ...store.agentProfile,
+  const key = userAddress.trim().toLowerCase();
+  const current = store.profiles[key] ?? createDefaultProfile(key);
+  const updated: AgentProfile = {
+    ...current,
     ...patch,
+    ownerAddress: key,
     policy: patch.policy
-      ? { ...store.agentProfile.policy, ...patch.policy }
-      : store.agentProfile.policy,
+      ? { ...current.policy, ...patch.policy }
+      : current.policy,
     updatedAt: new Date().toISOString(),
   };
+  store.profiles[key] = updated;
   writeStore(store);
-  return store.agentProfile;
+  return updated;
 }
 
 export function getDailyUsage(userAddress: string): DailyUsageRecord {

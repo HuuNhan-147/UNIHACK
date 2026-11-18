@@ -21,6 +21,8 @@ export interface PortfolioData {
   chainId: number;
   totalValueUsd: number;
   priceSource: AvaxPriceSource;
+  oracleUpdatedAt?: string;
+  fallbackReason?: string;
   assets: PortfolioAsset[];
 }
 
@@ -31,6 +33,9 @@ export interface PolicyData {
   musdcAllowed: boolean;
   nativeAvaxAllowed: boolean;
   routerAllowed: boolean;
+  oracleEnabled?: boolean;
+  activeRateMusdcPerAvax?: string;
+  routerLiquidityAvax?: string;
 }
 
 export interface AgentPolicyConfig {
@@ -219,8 +224,19 @@ export async function fetchAgentProfile(
   return handleJson(res);
 }
 
+export function buildProfileAuthMessage(
+  userAddress: string,
+  timestamp: number
+): string {
+  return `AgentVault Policy Update\nWallet: ${userAddress.toLowerCase()}\nTimestamp: ${timestamp}`;
+}
+
 export async function saveAgentProfile(
-  patch: Partial<AgentProfile>
+  patch: Partial<AgentProfile> & {
+    userAddress: string;
+    timestamp: number;
+    signature: string;
+  }
 ): Promise<{ profile: AgentProfile }> {
   const res = await fetch(`${API_BASE}/agent/profile`, {
     method: "PUT",
@@ -230,7 +246,10 @@ export async function saveAgentProfile(
   return handleJson(res);
 }
 
-export async function draftPolicyFromNL(prompt: string): Promise<{
+export async function draftPolicyFromNL(
+  prompt: string,
+  userAddress?: string
+): Promise<{
   draft: AgentPolicyConfig;
   executionMode: ExecutionMode;
   validation: { valid: boolean; errors: string[] };
@@ -239,7 +258,7 @@ export async function draftPolicyFromNL(prompt: string): Promise<{
   const res = await fetch(`${API_BASE}/agent/policy-draft`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, userAddress }),
   });
   return handleJson(res);
 }
@@ -296,6 +315,71 @@ export async function sendAgentMessage(
     body: JSON.stringify({ message, userAddress, sessionId }),
   });
   return handleJson<AgentChatResult>(res);
+}
+
+export async function sendAgentMessageStream(
+  message: string,
+  userAddress: string | undefined,
+  sessionId: string,
+  onChunk: (chunk: string) => void
+): Promise<AgentChatResult> {
+  const res = await fetch(`${API_BASE}/agent/chat-stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, userAddress, sessionId }),
+  });
+
+  if (!res.ok || !res.body) {
+    return sendAgentMessage(message, userAddress, sessionId);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResult: AgentChatResult | null = null;
+  let currentEvent = "message";
+
+  const dispatchBlock = (block: string) => {
+    const lines = block.split("\n");
+    let ev = "message";
+    const dataLines: string[] = [];
+    for (const line of lines) {
+      if (line.startsWith("event:")) {
+        ev = line.slice(6).trim();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trim());
+      }
+    }
+    if (dataLines.length === 0) return;
+    currentEvent = ev;
+    const payload = JSON.parse(dataLines.join("\n"));
+    if (currentEvent === "chunk" && typeof payload.chunk === "string") {
+      onChunk(payload.chunk);
+    } else if (currentEvent === "done") {
+      finalResult = payload as AgentChatResult;
+    } else if (currentEvent === "error") {
+      throw new Error(payload.error || "Streaming error");
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split("\n\n");
+    buffer = blocks.pop() ?? "";
+    for (const block of blocks) {
+      if (block.trim()) dispatchBlock(block);
+    }
+  }
+  if (buffer.trim()) {
+    dispatchBlock(buffer);
+  }
+
+  if (!finalResult) {
+    throw new Error("Stream ended without final response.");
+  }
+  return finalResult;
 }
 
 export async function resetAgentSession(sessionId: string): Promise<void> {

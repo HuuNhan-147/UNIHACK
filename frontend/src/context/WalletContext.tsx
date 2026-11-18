@@ -61,6 +61,7 @@ interface WalletContextValue {
   disconnect: () => void;
   switchToFuji: () => Promise<void>;
   sendTx: (tx: { to: string; data: string; value?: string }) => Promise<string>;
+  signMessage: (message: string) => Promise<string>;
   callFaucet: () => Promise<string>;
 }
 
@@ -179,6 +180,13 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({
     return receipt?.hash || sent.hash;
   };
 
+  const signMessage = async (message: string) => {
+    if (!window.ethereum) throw new Error("Ví chưa kết nối.");
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    return await signer.signMessage(message);
+  };
+
   const callFaucet = async () => {
     if (!MUSDC_ADDRESS) {
       throw new Error("Chưa cấu hình VITE_MUSDC_ADDRESS trong frontend/.env");
@@ -207,6 +215,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({
         disconnect,
         switchToFuji,
         sendTx,
+        signMessage,
         callFaucet,
       }}
     >
