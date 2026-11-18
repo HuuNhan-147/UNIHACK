@@ -23,6 +23,11 @@ const ERROR_ABI = [
   "error InvalidMinAmountOut(uint256 provided, uint256 minAllowed)",
   "error UnsupportedOutputToken(address tokenOut)",
   "error InsufficientRouterLiquidity(uint256 available, uint256 required)",
+  "error InvalidOraclePrice(int256 answer)",
+  "error StaleOraclePrice(uint256 updatedAt, uint256 maxAge)",
+  "error IncompleteOracleRound(uint80 roundId, uint80 answeredInRound)",
+  "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
+  "error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed)",
 ];
 const errorIface = new ethers.Interface(ERROR_ABI);
 
@@ -39,6 +44,19 @@ export function decodeWeb3Error(err: any): string {
           const req = ethers.formatUnits(parsed.args[0], 6);
           const max = ethers.formatUnits(parsed.args[1], 6);
           return `Smart Contract từ chối (ExceedsMaxTxAmount): Yêu cầu ${req} mUSDC vượt hạn mức ${max} mUSDC/giao dịch.`;
+        }
+        if (parsed.name === "InsufficientRouterLiquidity") {
+          const avail = Number(ethers.formatEther(parsed.args[0])).toFixed(4);
+          const req = Number(ethers.formatEther(parsed.args[1])).toFixed(4);
+          return `Smart Contract từ chối (InsufficientRouterLiquidity): Pool còn ${avail} AVAX, cần ${req} AVAX.`;
+        }
+        if (parsed.name === "ERC20InsufficientBalance") {
+          const bal = ethers.formatUnits(parsed.args[1], 6);
+          const req = ethers.formatUnits(parsed.args[2], 6);
+          return `Số dư mUSDC không đủ: Ví có ${bal} mUSDC, cần ${req} mUSDC.`;
+        }
+        if (parsed.name === "ERC20InsufficientAllowance") {
+          return "Allowance mUSDC chưa đủ cho AgentVaultExecutor. Vui lòng ký Bước 1 (Exact Approve) trước.";
         }
         if (parsed.name === "EnforcedPause") {
           return "Smart Contract đang ở trạng thái Emergency Pause.";

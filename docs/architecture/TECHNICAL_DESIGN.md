@@ -1,8 +1,8 @@
-# TECHNICAL DESIGN — AGENTVAULT (AVALANCHE DEFI COPILOT)
+# TECHNICAL DESIGN — AGENTVAULT (AVALANCHE DEFI & RISK COPILOT)
 
-**Phiên bản:** Topic #13 (UniHack Build on Avalanche)  
+**Phiên bản:** Phase 2 — Risk Intelligence & Transaction Guardian (UniHack Topic #13)  
 **Mạng triển khai:** Avalanche Fuji Testnet (`Chain ID: 43113`)  
-**Nguyên tắc thiết kế:** *AI đề xuất, Smart Contract kiểm soát, Người dùng giữ chìa khóa (Non-custodial).*
+**Nguyên tắc thiết kế:** *AI đề xuất & phân tích — Smart Contract kiểm soát — Người dùng giữ khóa ký (100% Non-custodial).*
 
 ---
 
@@ -11,65 +11,51 @@
 ```text
 +-------------------------------------------------------------------+
 | 1. FRONTEND (React + Vite + TailwindCSS + Ethers v6)              |
-|    - WalletContext: Kết nối MetaMask / Core Wallet (Fuji 43113)   |
-|    - HoldingsTable: Hiển thị số dư & badge Chainlink Fuji Feed    |
+|    - WalletContext: Kết nối MetaMask/Core (Fuji 43113), kiểm tra  |
+|      keccak256 integrityHash & hỗ trợ ký EIP-191 cập nhật Policy  |
+|    - HoldingsTable & RiskIntelligenceCard: Hiển thị số dư, giá    |
+|      Chainlink Fuji, Allowance Exposure, Router Liquidity, Aave   |
 |    - ChatPanel: Giao diện DeFi Copilot + Session Isolation        |
-|    - TxPreviewModal (Tx Guardian): Giải trình & ký giao dịch      |
+|    - TxPreviewModal (Tx Guardian): Hiển thị kết quả mô phỏng      |
+|      eth_call trực tiếp, tự động Re-Simulate sau Exact Approve    |
 +---------------------------------+---------------------------------+
                                   | HTTP REST (/api/*)
 +---------------------------------v---------------------------------+
 | 2. BACKEND AI HARNESS (Node.js + Express + TypeScript + Gemini)   |
 |    - Agent Orchestrator & Per-Session Memory (orchestrator.ts)    |
 |    - Tool Registry: 7 Read Tools + 3 Write Tools (zod schemas)    |
-|    - Deterministic Policy Engine & Forecast Guardrail             |
-|    - Services: portfolio (Chainlink/DeFiLlama), aave, history     |
-|      (Avalanche Glacier API), swapPlanner, allowancePlanner      |
+|    - Deterministic Policy Engine, Intent Guard & Forecast Refusal |
+|    - Live EVM Simulator (txSimulator.service.ts): eth_call +      |
+|      eth_estimateGas với đúng `from: userAddress`                 |
+|    - Data Services: Chainlink Round Validator, Verified Aave V3   |
+|      Fuji Reader (0xccEa5C...), DeFiLlama Yields, Glacier History |
+|    - Per-Wallet Profile & Daily Usage Store (store.service.ts)    |
 +---------------------------------+---------------------------------+
-                                  | Ethers v6 JSON-RPC
+                                  | JSON-RPC (Fuji 43113)
 +---------------------------------v---------------------------------+
-| 3. SMART CONTRACTS (Solidity 0.8.20 + OpenZeppelin + Chainlink)   |
-|    - AgentVaultPolicy.sol: Limit/Tx, Slippage, Whitelists, Pause  |
-|    - AgentVaultExecutor.sol: Entrypoint qua ISwapRouter           |
-|    - MockDEXRouter.sol: Implement ISwapRouter + Chainlink Feed    |
-|    - MockERC20.sol (mUSDC): 6 decimals + Faucet                   |
+| 3. ON-CHAIN SMART CONTRACTS (Avalanche Fuji Testnet)              |
+|    - AgentVaultPolicy (0x940d6C627C55F002A42eAc257d7A36dbDe4157e7)|
+|      Enforce maxAmountPerTx (300 mUSDC), maxSlippageBps (200),    |
+|      allowedTokens, allowedRouters, Pausable                      |
+|    - AgentVaultExecutor (0x927937eC37b343290b22893f90C00E8eE4AE6582)|
+|      ReentrancyGuard, kiểm tra Policy & minAmountOut on-chain     |
+|    - MockDEXRouter (0x6ABC46F7D0ECaf22005b9d266B77e7AE9f79B8B8)   |
+|      Đọc tỷ giá trực tiếp từ Chainlink AVAX/USD Fuji Feed         |
+|    - MockERC20 mUSDC (0xb8463e3a406998841d2c442EbbD247D3D4d36Ed1) |
 +-------------------------------------------------------------------+
 ```
 
 ---
 
-## 2. Thiết kế Smart Contracts (`contracts/`)
+## 2. Luồng bảo vệ giao dịch 4 lớp (Defense-in-Depth)
 
-1. **`AgentVaultPolicy.sol` (`Ownable`, `Pausable`):**
-   - Lưu và kiểm soát on-chain: `maxAmountPerTx` (`300 mUSDC`), `maxSlippageBps` (`200 bps = 2%`), `allowedTokens`, `allowedRouters`, `paused()`.
-   - Hàm `validateSwap(...)` revert ngay với custom errors (`ExceedsMaxTxAmount`, `SlippageTooHigh`, `TokenNotAllowed`, `RouterNotAllowed`, `EnforcedPause`) nếu vi phạm.
-2. **`ISwapRouter.sol` & `MockDEXRouter.sol` (`ISwapRouter`, `Ownable`, `ReentrancyGuard`):**
-   - Chuẩn hóa interface `ISwapRouter` để tách biệt logic thực thi khỏi router cụ thể (sẵn sàng cắm DEX thật như Trader Joe/LFJ hoặc Pangolin khi lên Mainnet).
-   - `MockDEXRouter` hỗ trợ đọc giá `AVAX/USD` trực tiếp từ **Chainlink `IAggregatorV3`** (`0x5498BB86BC934c8D34FDA08E81D444153d0D06aD` trên Fuji), kiểm tra `answer > 0` và `maxOracleAge`, tự động quy đổi decimals (8 $\rightarrow$ 6) cho `rateMusdcPerAvax()` và `getAmountOut()`.
-   - Khóa `msg.sender == executor` để ngăn gọi trực tiếp router bỏ qua `AgentVaultPolicy`.
-3. **`AgentVaultExecutor.sol` (`Ownable`, `Pausable`, `ReentrancyGuard`):**
-   - Giao tiếp qua `ISwapRouter public immutable router`.
-   - Kiểm tra `policy.validateSwap(...)`, kiểm tra `minAmountOut >= minAllowedOut` on-chain, thực thi swap và phát event `SwapExecuted`.
-
----
-
-## 3. Thiết kế Backend & AI Copilot Harness (`backend/`)
-
-1. **Agent Orchestrator (`agent/orchestrator.ts`) & Tool Registry (`agent/toolRegistry.ts`):**
-   - Tách biệt **7 Read Tools** (chỉ đọc & phân tích định lượng) và **3 Write Tools** (chỉ tạo unsigned tx plan).
-   - Cô lập hội thoại theo `sessionId` (`sessionMemory.service.ts`, TTL 2h, tối đa 16 turns).
-   - **Forecast Refusal:** `detectForecastRequest()` chặn các câu hỏi dự đoán giá tương lai hoặc cam kết lợi nhuận trước khi gọi model.
-2. **Market & Protocol Services:**
-   - `portfolio.service.ts`: Đọc số dư AVAX/mUSDC on-chain và ưu tiên giá `AVAX/USD` từ **Chainlink Fuji Feed** (`priceSource: "CHAINLINK_FUJI"`), fallback sang DeFiLlama API (`"LIVE_API"`).
-   - `aave.service.ts`: Đọc dữ liệu vị thế thực tế từ Aave V3 (`getUserAccountData`) khi cấu hình `AAVE_V3_POOL_ADDRESS`.
-   - `history.service.ts`: Tổng hợp lịch sử giao dịch thật qua **Avalanche Glacier API** (Chain ID `43113`) và logs `SwapExecuted`.
-   - `copilotAnalysis.service.ts`: Tính quote swap, phân tích tỷ trọng danh mục, tính Health Factor / Liquidation Price xác định, và lấy dữ liệu APY/TVL Avalanche Mainnet từ DeFiLlama (kèm disclaimer).
-3. **Tx Planners (`swapPlanner.service.ts`, `allowancePlanner.service.ts`):**
-   - Không lưu private key người dùng. Trả về `UnsignedTx` kèm bản kiểm tra **Tx Guardian** (Exact Approval, Whitelisted Target, On-chain Slippage Guard).
-
----
-
-## 4. Thiết kế Frontend (`frontend/`)
-
-- **Wallet & Network:** `WalletContext.tsx` kết nối MetaMask / Core Wallet, tự động yêu cầu chuyển sang Avalanche Fuji (`43113`).
-- **Dashboard:** Hiển thị số dư, nguồn giá `Chainlink Fuji Feed`, hạn mức `AgentVaultPolicy`, và lịch sử giao dịch từ Glacier API.
-- **Copilot & Tx Guardian:** `ChatPanel.tsx` quản lý `sessionId` và 5 prompt mẫu; `TxPreviewModal.tsx` hiển thị tóm tắt dễ hiểu để người dùng tự ký từng bước (Approve exact amount $\rightarrow$ Execute Swap hoặc Revoke Allowance).
+1. **Lớp 1 — Pre-LLM Intent & Forecast Guard (`deterministicPolicy.service.ts`, `orchestrator.ts`):**
+   - Chặn ngay các câu lệnh có dấu hiệu Prompt Injection (`ignore rules`, `system override`), đòi xuất private key / tự động ký (`SECRET_OR_CUSTODY_VIOLATION`), cấp quyền vô hạn (`MaxUint256`), hoặc dự đoán giá tương lai trước khi gọi LLM.
+2. **Lớp 2 — Deterministic Policy & Live EVM Simulation (`txSimulator.service.ts`):**
+   - Kiểm tra hạn mức cá nhân hóa theo ví + hạn mức Smart Contract (`300 mUSDC`, `200 bps`).
+   - Chạy `provider.call` (`eth_call`) và `provider.estimateGas` với `from: userAddress` tại block Fuji mới nhất; giải mã mọi lỗi Custom Error và gắn mã băm `integrityHash`.
+3. **Lớp 3 — Human-in-the-Loop UI & Client Integrity Check (`TxPreviewModal.tsx`, `WalletContext.tsx`):**
+   - Hiển thị rõ 7 thông số mô phỏng cùng các điều kiện chưa xác minh; khóa nút ký mặc định nếu `Overall Decision = BLOCKED`.
+   - Trình duyệt tính lại `keccak256("43113:<to>:<data>:<value>")` ngay trước `signer.sendTransaction` để chống thay đổi calldata sau mô phỏng.
+4. **Lớp 4 — On-Chain Smart Contract Enforcement (`AgentVaultPolicy.sol`, `AgentVaultExecutor.sol`):**
+   - Kiểm tra bất biến trên EVM: dù gọi trực tiếp từ ngoài UI vẫn bị chặn nếu vượt `300 mUSDC`, trượt giá `> 2%` hoặc sai whitelist.

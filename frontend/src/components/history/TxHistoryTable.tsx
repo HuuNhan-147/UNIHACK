@@ -11,14 +11,14 @@ export const TxHistoryTable: React.FC<{ records: TxRecord[] }> = ({
   return (
     <div className="rounded-2xl border border-slate-800 bg-[#131722] p-5">
       <h2 className="text-sm font-semibold text-slate-200 mb-3">
-        Transaction History (Session)
+        Transaction History (Avalanche Fuji & Glacier)
       </h2>
       {records.length === 0 ? (
         <p className="text-xs text-slate-500">
-          Chưa có giao dịch nào trong phiên này.
+          Chưa ghi nhận giao dịch nào cho ví này trên Avalanche Fuji.
         </p>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
           {records.map((rec, i) => (
             <div
               key={i}

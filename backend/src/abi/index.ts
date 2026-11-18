@@ -40,8 +40,6 @@ export const CHAINLINK_AGGREGATOR_ABI = [
 
 export const AAVE_V3_POOL_ABI = [
   "function getUserAccountData(address user) view returns (uint256 totalCollateralBase, uint256 totalDebtBase, uint256 availableBorrowsBase, uint256 currentLiquidationThreshold, uint256 ltv, uint256 healthFactor)",
-  "function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)",
-  "function withdraw(address asset, uint256 amount, address to) returns (uint256)",
 ] as const;
 
 export const EXECUTOR_ABI = [

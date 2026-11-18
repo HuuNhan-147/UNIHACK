@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import { env } from "../config/env";
 import { getContracts, provider, withRpcTimeout } from "./blockchain.service";
+import { decodeSimulationError } from "./txSimulator.service";
 
 export interface PolicyStatus {
   maxAmountPerTxMusdc: string;
@@ -75,26 +76,9 @@ export async function precheckSwapPolicy(
     );
     return { allowed: true };
   } catch (err: any) {
-    const rawData = err?.data || err?.info?.error?.data;
-    if (typeof rawData === "string" && rawData.startsWith("0x")) {
-      try {
-        const parsed = policy.interface.parseError(rawData);
-        if (parsed?.name === "ExceedsMaxTxAmount") {
-          const req = ethers.formatUnits(parsed.args[0], 6);
-          const max = ethers.formatUnits(parsed.args[1], 6);
-          return {
-            allowed: false,
-            reason: `ExceedsMaxTxAmount: Yêu cầu ${req} mUSDC vượt hạn mức ${max} mUSDC/giao dịch.`,
-          };
-        }
-        if (parsed) {
-          return { allowed: false, reason: `Policy rejected: ${parsed.name}` };
-        }
-      } catch {
-        // fall through
-      }
-    }
-    const msg = err?.shortMessage || err?.reason || err?.message || "Policy rejected";
-    return { allowed: false, reason: msg };
+    return {
+      allowed: false,
+      reason: decodeSimulationError(err),
+    };
   }
 }

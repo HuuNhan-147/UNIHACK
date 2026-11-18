@@ -1,43 +1,44 @@
-# AgentVault — AI DeFi Copilot on Avalanche
+# AgentVault — Non-Custodial AI DeFi & Risk Copilot on Avalanche
 
 > **Avalanche Team1 Vietnam UniHack — Topic #13 (DeFi Copilot):**  
-> Trợ lý AI thao tác DeFi trên **Avalanche Fuji Testnet (`43113`)** bằng ngôn ngữ tự nhiên (Tiếng Việt / Tiếng Anh) — kết hợp **Chainlink `AVAX/USD` Price Feed on-chain**, đọc vị thế **Aave V3**, lớp kiểm duyệt **Tx Guardian** và cơ chế khóa rủi ro trực tiếp bằng **Smart Contract Policy**.
+> Trợ lý AI phân tích rủi ro & chuẩn bị giao dịch DeFi trên **Avalanche Fuji Testnet (`Chain ID: 43113`)** bằng ngôn ngữ tự nhiên (Tiếng Việt / Tiếng Anh) — tích hợp **Chainlink `AVAX/USD` Price Feed on-chain**, đọc vị thế **Aave V3 Fuji Pool** đã xác minh bytecode, mô phỏng giao dịch trực tiếp bằng **Tx Guardian (`eth_call` + `keccak256` Calldata Integrity Guard)** và thực thi khóa rủi ro trực tiếp bằng **Smart Contract Policy**.
 
 ---
 
 ## 1. Vấn đề & Giải pháp
 
-* **Vấn đề:** Người dùng mới gặp rào cản lớn khi thao tác DeFi (đọc số dư, tính trượt giá, kiểm tra allowance, đánh giá rủi ro thanh lý), trong khi giao toàn quyền ví cho AI Agent lại tiềm ẩn rủi ro mất tiền nếu AI bị lỗi hoặc bị tấn công prompt injection.
-* **Giải pháp của AgentVault:** **AI đề xuất, Smart Contract kiểm soát, Người dùng giữ chìa khóa (100% Non-custodial).**
-  * AI chỉ đọc dữ liệu thật và tạo **Unsigned Transaction Plan**.
-  * Mọi giao dịch đều đi qua **Tx Guardian** giải thích rõ bằng ngôn ngữ tự nhiên trước khi người dùng tự ký bằng ví (MetaMask / Core Wallet).
-  * Ngay cả khi Backend bị giả mạo, **`AgentVaultPolicy`** on-chain vẫn chặn đứng các giao dịch vượt hạn mức hoặc sai whitelist.
+* **Vấn đề:** Người dùng DeFi gặp rào cản lớn khi phải tự đọc trạng thái hợp đồng, tính trượt giá, kiểm tra phơi nhiễm allowance và đánh giá rủi ro thanh lý; trong khi giao private key cho AI Agent tự động ký lại tiềm ẩn rủi ro mất tài sản nếu AI ảo giác hoặc bị tấn công Prompt Injection.
+* **Giải pháp của AgentVault:** **AI đề xuất & phân tích — Smart Contract kiểm soát — Người dùng giữ khóa ký (100% Non-custodial).**
+  * AI chỉ đọc dữ liệu xác thực (gắn nhãn `ON_CHAIN`, `EXTERNAL_API`, `DETERMINISTIC_MATH`, `INSUFFICIENT_DATA`) và tạo **Unsigned Transaction Plan**.
+  * Trước khi ký, **Tx Guardian** chạy mô phỏng trực tiếp `eth_call` + `eth_estimateGas` với đúng địa chỉ ví người dùng (`from: userAddress`), phân loại `SIMULATION PASSED / FAILED / UNAVAILABLE` và đóng dấu toàn vẹn `integrityHash = keccak256(chainId:to:data:value)`.
+  * Ở lớp cuối cùng, **`AgentVaultPolicy`** on-chain chặn mọi giao dịch vượt trần `300 mUSDC/tx`, vượt `2% slippage` hoặc gọi sang contract ngoài whitelist.
 
 ---
 
 ## 2. Kiến trúc tổng quan
 
 ```text
-User (MetaMask / Core Wallet - Avalanche Fuji 43113)
-  │
+User (MetaMask / Core Wallet — Avalanche Fuji 43113)
+  │  • Ký EIP-191 xác thực khi lưu Policy Profile riêng theo ví
+  │  • Kiểm tra chainId === 43113 & keccak256 integrityHash trước khi ký giao dịch
   ▼
 Frontend (React + Vite + TailwindCSS + Ethers v6)
-  │  • Portfolio & Chainlink Fuji Price Badge
+  │  • HoldingsTable (Chainlink Fuji Price Feed Badge) & AssetAllocation
+  │  • RiskIntelligenceCard (Concentration, -20% Shock, Allowance, Router Liquidity, Aave V3)
   │  • DeFi Copilot Chat + Session Isolation
-  │  • Tx Guardian Inspector & Approval Modal
-  │
+  │  • Tx Guardian Inspector & Live EVM Simulator Modal
   ▼
 Backend (Node.js + Express + TypeScript + Gemini Function Calling)
   │  • 7 Deterministic Read Tools (Portfolio, Policy, Glacier History, Quote, Allocation, Risk, Yields)
   │  • 3 User-Signed Write Tools (Swap Plan, Set Allowance Plan, Revoke Allowance Plan)
-  │  • Chainlink Fuji Feed + Aave V3 Reader + DeFiLlama Yields
-  │  • Guardrails (Chặn dự đoán giá, chặn vượt hạn mức, chống Unlimited Approval)
-  │
+  │  • Live EVM Simulator (txSimulator.service.ts — eth_call, estimateGas, Custom Error Decoder)
+  │  • Chainlink Round Validator + Verified Aave V3 Fuji Reader + DeFiLlama Snapshot Yields
+  │  • Zero-Trust Guardrails (Chặn Prompt Injection, Chặn dự đoán giá, Chặn Unlimited Approval)
   ▼
 Avalanche Fuji Smart Contracts (Chain ID: 43113)
   • AgentVaultPolicy.sol   — Enforce maxAmountPerTx (300 mUSDC), maxSlippageBps (2%), whitelists, Pause
   • AgentVaultExecutor.sol — Entrypoint qua ISwapRouter, enforce minAmountOut & ReentrancyGuard
-  • MockDEXRouter.sol      — Implement ISwapRouter, hỗ trợ đọc giá trực tiếp từ Chainlink AVAX/USD
+  • MockDEXRouter.sol      — Implement ISwapRouter, đọc tỷ giá trực tiếp từ Chainlink AVAX/USD Fuji
   • MockERC20.sol (mUSDC)  — Token test ERC-20 (6 decimals) kèm Faucet
 ```
 
@@ -45,34 +46,30 @@ Avalanche Fuji Smart Contracts (Chain ID: 43113)
 
 ## 3. Tính năng cốt lõi
 
-### 7 Read Tools (Dữ liệu xác định, không bịa đặt)
-1. `get_portfolio`: Đọc số dư `AVAX` & `mUSDC` on-chain và giá `AVAX/USD` live từ **Chainlink Fuji Price Feed** (fallback DeFiLlama API).
-2. `get_policy_rules`: Đọc hạn mức giao dịch (`maxAmountPerTx`, `maxSlippageBps`, whitelist) trực tiếp từ `AgentVaultPolicy`.
-3. `get_tx_history`: Truy xuất lịch sử giao dịch thật trên Avalanche Fuji qua **Avalanche Glacier API** và event `SwapExecuted`.
-4. `get_swap_quote`: Tính tỷ giá swap `mUSDC -> AVAX` và `minAmountOut` từ Router on-chain.
-5. `analyze_portfolio_allocation`: Phân tích tỷ trọng tài sản, mức độ tập trung rủi ro và mô phỏng phân bổ sau swap giả định.
-6. `calculate_position_risk`: Đọc vị thế Lending thực tế trên **Aave V3** (`getUserAccountData`) nếu cấu hình `AAVE_V3_POOL_ADDRESS`, hoặc tính toán xác định Health Factor / Liquidation Price theo tham số người dùng cung cấp + mức độ sụt giảm 20% giá AVAX.
-7. `get_avalanche_protocol_yields`: Lấy dữ liệu TVL & APY tham khảo của các giao thức Avalanche Mainnet từ DeFiLlama (kèm disclaimer tách biệt với Testnet).
+### 7 Read Tools (Gắn nhãn nguồn dữ liệu, không bịa đặt)
+1. `get_portfolio`: Đọc số dư `AVAX` & `mUSDC` on-chain và giá `AVAX/USD` live từ **Chainlink Fuji Price Feed** (kiểm tra đầy đủ `roundId`, `answeredInRound`, `updatedAt`, `maxAge = 24h`).
+2. `get_policy_rules`: Đọc hạn mức on-chain từ `AgentVaultPolicy` cùng cấu hình Policy & hạn mức ngày riêng của từng ví.
+3. `get_tx_history`: Truy xuất và gộp (deduplicate) lịch sử giao dịch thật trên Avalanche Fuji từ **Avalanche Glacier API** và event `SwapExecuted`.
+4. `get_swap_quote`: Báo giá chỉ đọc (`isExecuted: false`) từ Router on-chain kèm kiểm tra thanh khoản `AVAX` khả dụng trong Pool.
+5. `analyze_portfolio_allocation`: Phân tích tỷ trọng tài sản, rủi ro tập trung (`HIGH_VOLATILE` / `BALANCED` / `HIGH_STABLE`), mức phơi nhiễm Allowance (`allowanceExposure`), thanh khoản Router (`routerLiquidityRisk`) và mô phỏng phân bổ sau swap giả định.
+6. `calculate_position_risk`: Stress-test kịch bản giá AVAX giảm `-20%`, đọc vị thế vay thực tế trên **Verified Aave V3 Fuji Pool** (`0xccEa5C65f6d4F465B71501418b88FBe4e7071283`), hoặc tính xác định Health Factor / Liquidation Price theo tham số người dùng cung cấp (trả về `INSUFFICIENT_DATA` nếu ví không có nợ).
+7. `get_avalanche_protocol_yields`: Lấy snapshot TVL & APY tham khảo của các giao thức Avalanche từ DeFiLlama (`EXTERNAL_API`, kèm disclaimer không cam kết lợi nhuận).
 
-### 3 Write Tools (Human-in-the-loop & Tx Guardian)
-1. `plan_swap`: Lập kế hoạch swap `mUSDC -> AVAX` qua `AgentVaultExecutor` (`ISwapRouter`).
-2. `plan_set_allowance`: Cấp quyền chi tiêu đúng bằng số lượng cần thiết (không approve vô hạn).
-3. `plan_revoke_allowance`: Thu hồi allowance về `0`.
-
-### Guardrails & An toàn
-* **No Forecast / No Hallucination:** Từ chối mọi yêu cầu dự đoán giá tương lai hoặc cam kết lợi nhuận.
-* **On-chain Enforcement:** `AgentVaultPolicy` chặn mọi lệnh `> 300 mUSDC` hoặc slippage `> 2%` ở cấp Smart Contract.
-* **Per-Session Memory:** Cách ly ngữ cảnh hội thoại theo từng `sessionId`.
+### 3 Write Tools (Qua Tx Guardian Live Simulation & Chữ ký Ví)
+1. `plan_swap`: Lập kế hoạch swap `mUSDC -> AVAX` qua `AgentVaultExecutor`, tự động chạy `eth_call` mô phỏng và đính kèm `integrityHash`.
+2. `plan_set_allowance`: Chuẩn bị giao dịch `Exact Approve` (`<= 300 mUSDC`) cho `AgentVaultExecutor` (chặn tuyệt đối Unlimited Approval).
+3. `plan_revoke_allowance`: Chuẩn bị giao dịch `approve(executor, 0)` để thu hồi toàn bộ quyền chi tiêu `mUSDC`.
 
 ---
 
-## 4. Smart Contracts trên Avalanche Fuji (`43113`)
+## 4. Địa chỉ Smart Contracts trên Avalanche Fuji (`43113`)
 
 * **Chainlink `AVAX/USD` Feed (Fuji):** `0x5498BB86BC934c8D34FDA08E81D444153d0D06aD`
+* **Verified Aave V3 Pool (Fuji):** `0xccEa5C65f6d4F465B71501418b88FBe4e7071283`
 * **Triển khai hiện tại (`contracts/deployments/fuji.json`):**
   * `MockERC20 (mUSDC)`: `0xb8463e3a406998841d2c442EbbD247D3D4d36Ed1`
   * `AgentVaultPolicy`: `0x940d6C627C55F002A42eAc257d7A36dbDe4157e7`
-  * `MockDEXRouter` *(Chainlink-backed)*: `0x6ABC46F7D0ECaf22005b9d266B77e7AE9f79B8B8`
+  * `MockDEXRouter` *(Chainlink-backed, `useOracle = true`)*: `0x6ABC46F7D0ECaf22005b9d266B77e7AE9f79B8B8`
   * `AgentVaultExecutor`: `0x927937eC37b343290b22893f90C00E8eE4AE6582`
 
 ---
@@ -80,62 +77,49 @@ Avalanche Fuji Smart Contracts (Chain ID: 43113)
 ## 5. Cấu trúc dự án
 
 ```text
-├── contracts/   # Hardhat + Solidity (AgentVaultPolicy, AgentVaultExecutor, MockDEXRouter, ISwapRouter, IAggregatorV3)
-├── backend/     # Express + TypeScript + Gemini Function Calling + Chainlink/Aave/Glacier services + eval/
-├── frontend/    # React + Vite + TypeScript + TailwindCSS + ethers v6
-└── docs/        # Tài liệu kiến trúc, audit và kịch bản demo
+├── contracts/   # Hardhat + Solidity (AgentVaultPolicy, AgentVaultExecutor, MockDEXRouter, MockERC20)
+├── backend/     # Express + TypeScript + Gemini Function Calling + Tx Simulator + Risk Services + eval/
+├── frontend/    # React + Vite + TypeScript + TailwindCSS + Ethers v6
+└── docs/        # Báo cáo Audit & Implementation (UNIHACK_STRATEGIC_AUDIT, P0 & P1 Reports, Demo Script)
 ```
 
 ---
 
-## 6. Cài đặt & Chạy Local
+## 6. Cài đặt & Khởi chạy
 
 ### Yêu cầu
 * Node.js `>= 20.0.0` và `pnpm`
-* Ví trình duyệt (MetaMask hoặc Core Wallet) cấu hình mạng **Avalanche Fuji Testnet** (`Chain ID: 43113`)
+* Ví trình duyệt (MetaMask hoặc Core Wallet) chuyển sang mạng **Avalanche Fuji Testnet (`Chain ID: 43113`)**
 
-### Cài đặt & Cấu hình
+### Cài đặt & Chạy Local
 ```bash
 pnpm install
-```
-Cấu hình các biến môi trường trong `contracts/.env`, `backend/.env` (thêm `GEMINI_API_KEY`, `CHAINLINK_AVAX_USD_FEED`, tùy chọn `AAVE_V3_POOL_ADDRESS`) và `frontend/.env`.
 
-### Khởi chạy ứng dụng
-```bash
-# Terminal 1: Chạy Backend (http://localhost:4000)
+# Terminal 1: Khởi chạy Backend API (http://localhost:4000)
 pnpm --filter backend dev
 
-# Terminal 2: Chạy Frontend (http://localhost:5173)
+# Terminal 2: Khởi chạy Frontend Dashboard (http://localhost:5173)
 pnpm --filter frontend dev
 ```
 
-### Deploy Smart Contracts lên Fuji (khi cần cập nhật on-chain)
-```bash
-pnpm --filter contracts check:fuji
-pnpm --filter contracts deploy:fuji
-```
-
 ---
 
-## 7. Kiểm thử & Đánh giá
+## 7. Kiểm thử & Đánh giá (Evaluation Suite)
 
-```bash
-# 1. Smart Contract Unit Tests (24/24 passing: Policy, Executor, Chainlink Oracle, SpendGuard)
-pnpm --filter contracts test
-
-# 2. Topic 13 Bilingual Evaluation Suite (30/30 deterministic passing)
-pnpm --filter backend eval
-pnpm --filter backend eval -- --live
-
-# 3. Type-check & Production Build
-pnpm --filter backend typecheck
-pnpm --filter frontend build
-```
-
----
-
-## 8. Lưu ý Testnet & Giới hạn
-
-* `MockERC20` (`mUSDC`) và `MockDEXRouter` (hỗ trợ tỷ giá Chainlink `AVAX/USD`) phục vụ môi trường Avalanche Fuji Testnet; kiến trúc `ISwapRouter` sẵn sàng thay thế bằng DEX Router thật (LFJ / Pangolin) khi triển khai Mainnet.
-* Dữ liệu TVL/APY từ DeFiLlama phản ánh **Avalanche Mainnet** (chỉ dùng tham khảo, không cam kết lợi nhuận).
-* Copilot chỉ tạo giao dịch chưa ký để người dùng kiểm tra qua Tx Guardian và tự ký bằng ví.
+* **Smart Contract Unit Tests (`18/18 PASS`):**
+  ```bash
+  pnpm --filter contracts test
+  ```
+* **AI Deterministic Evaluation & Security Regression (`40/40 PASS` + `4/4 Security PASS`):**
+  ```bash
+  pnpm --filter backend eval
+  ```
+* **AI Live Gemini + Fuji RPC Evaluation (`40/40 PASS` — `100% Tool Selection`, `0% Hallucination`):**
+  ```bash
+  pnpm --filter backend eval -- --live
+  ```
+* **Production Build Check:**
+  ```bash
+  pnpm --filter backend build
+  pnpm --filter frontend build
+  ```
