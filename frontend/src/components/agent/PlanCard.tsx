@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { CheckCircle2, XCircle, RefreshCw, Shield, ChevronDown, ChevronUp } from "lucide-react";
 import { SwapPlan, revalidatePlan, rejectPlan } from "../../services/api";
 
@@ -15,9 +15,15 @@ export const PlanCard: React.FC<Props> = ({
   onInspect,
   onRejected,
 }) => {
-  const [editAmount, setEditAmount] = useState<string>(plan?.amountIn || "10");
+  const [editAmount, setEditAmount] = useState<string>(plan?.amountIn || "1");
   const [revalidating, setRevalidating] = useState(false);
   const [showAllChecks, setShowAllChecks] = useState(false);
+
+  useEffect(() => {
+    if (plan?.amountIn) {
+      setEditAmount(plan.amountIn);
+    }
+  }, [plan?.planId, plan?.amountIn]);
 
   if (!plan) return null;
 
@@ -53,15 +59,30 @@ export const PlanCard: React.FC<Props> = ({
             {plan.structuredPlan.objective}
           </h3>
         </div>
-        <span
-          className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold shrink-0 ${
-            plan.valid
-              ? "bg-emerald-500/15 text-emerald-400"
-              : "bg-red-500/15 text-red-400"
-          }`}
-        >
-          Policy: {plan.structuredPlan.policyCheck.decision}
-        </span>
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          {plan.guardian?.simulation && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                plan.guardian.simulation.status === "SIMULATION_PASSED"
+                  ? "bg-emerald-500/15 text-emerald-400"
+                  : plan.guardian.simulation.status === "SIMULATION_FAILED"
+                    ? "bg-red-500/15 text-red-400"
+                    : "bg-amber-500/15 text-amber-300"
+              }`}
+            >
+              {plan.guardian.simulation.status.replace("_", " ")}
+            </span>
+          )}
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+              plan.valid
+                ? "bg-emerald-500/15 text-emerald-400"
+                : "bg-red-500/15 text-red-400"
+            }`}
+          >
+            Policy: {plan.structuredPlan.policyCheck.decision}
+          </span>
+        </div>
       </div>
 
       {/* Edit & Revalidate */}

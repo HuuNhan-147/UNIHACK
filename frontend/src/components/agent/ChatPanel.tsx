@@ -161,6 +161,17 @@ export const ChatPanel: React.FC<Props> = ({ onSelectPlan }) => {
           </button>
           <button
             type="button"
+            onClick={() =>
+              submitPrompt(
+                "Đánh giá rủi ro vị thế Aave V3 Fuji, mức phơi nhiễm allowance và thanh khoản Router hiện tại của ví tôi."
+              )
+            }
+            className="rounded-lg bg-cyan-500/10 px-2.5 py-1 text-xs text-cyan-300 hover:bg-cyan-500/20"
+          >
+            Risk: Aave & Liquidity
+          </button>
+          <button
+            type="button"
             onClick={() => submitPrompt("Swap 1 mUSDC sang AVAX")}
             className="rounded-lg bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-400 hover:bg-emerald-500/20"
           >

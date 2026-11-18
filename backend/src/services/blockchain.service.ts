@@ -16,7 +16,8 @@ export const provider = new ethers.JsonRpcProvider(env.FUJI_RPC_URL, {
 
 export async function withRpcTimeout<T>(
   promise: Promise<T>,
-  label = "RPC call"
+  label = "RPC call",
+  timeoutMs = RPC_TIMEOUT_MS
 ): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   try {
@@ -24,8 +25,8 @@ export async function withRpcTimeout<T>(
       promise,
       new Promise<never>((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error(`${label} timed out after ${RPC_TIMEOUT_MS}ms`)),
-          RPC_TIMEOUT_MS
+          () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+          timeoutMs
         );
       }),
     ]);
