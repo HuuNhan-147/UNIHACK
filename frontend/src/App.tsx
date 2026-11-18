@@ -7,16 +7,19 @@ import {
   fetchOnChainHistory,
   fetchAgentProfile,
   fetchAuditLogs,
+  fetchRiskOverview,
   PortfolioData,
   PolicyData,
   SwapPlan,
   AgentProfile,
   DailyUsageRecord,
   AuditLogEvent,
+  RiskOverviewResponse,
 } from "./services/api";
 import { AssetAllocation } from "./components/dashboard/AssetAllocation";
 import { HoldingsTable } from "./components/dashboard/HoldingsTable";
 import { PolicyStatusCard } from "./components/dashboard/PolicyStatusCard";
+import { RiskIntelligenceCard } from "./components/dashboard/RiskIntelligenceCard";
 import { ChatPanel } from "./components/agent/ChatPanel";
 import { PlanCard } from "./components/agent/PlanCard";
 import { TxPreviewModal, TxRecord } from "./components/agent/TxPreviewModal";
@@ -52,6 +55,9 @@ const DashboardContent: React.FC = () => {
   const [activePlan, setActivePlan] = useState<SwapPlan | null>(null);
   const [inspectPlan, setInspectPlan] = useState<SwapPlan | null>(null);
   const [history, setHistory] = useState<TxRecord[]>([]);
+  const [riskOverview, setRiskOverview] = useState<RiskOverviewResponse | null>(
+    null
+  );
 
   const loadOnChainData = useCallback(async () => {
     setLoadingData(true);
@@ -69,11 +75,13 @@ const DashboardContent: React.FC = () => {
       setAuditLogs(logs);
 
       if (address) {
-        const [port, onChainHist] = await Promise.all([
+        const [port, onChainHist, riskRes] = await Promise.all([
           fetchPortfolio(address),
           fetchOnChainHistory(address).catch(() => []),
+          fetchRiskOverview(address).catch(() => null),
         ]);
         setPortfolio(port);
+        setRiskOverview(riskRes);
         if (onChainHist.length > 0) {
           setHistory((prev) => {
             const seen = new Set(onChainHist.map((x) => x.hash));
@@ -83,6 +91,7 @@ const DashboardContent: React.FC = () => {
         }
       } else {
         setPortfolio(null);
+        setRiskOverview(null);
       }
     } catch (err: any) {
       setBannerMsg(err?.message || "Không thể tải dữ liệu từ Backend.");
@@ -277,6 +286,10 @@ const DashboardContent: React.FC = () => {
                       totalValueUsd={portfolio?.totalValueUsd ?? 0}
                     />
                     <PolicyStatusCard policy={policy} />
+                    <RiskIntelligenceCard
+                      risk={riskOverview}
+                      loading={loadingData}
+                    />
                   </div>
                   <div className="xl:col-span-7 space-y-4">
                     <HoldingsTable

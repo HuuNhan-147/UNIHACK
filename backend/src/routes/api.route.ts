@@ -23,6 +23,10 @@ import {
 import { validatePolicyConfigUpdate } from "../services/deterministicPolicy.service";
 import { verifyAndRecordTransaction } from "../services/postTx.service";
 import { simulateUnsignedTransaction } from "../services/txSimulator.service";
+import {
+  analyzePortfolioAllocation,
+  calculatePositionRisk,
+} from "../services/copilotAnalysis.service";
 
 export const apiRouter = Router();
 
@@ -81,6 +85,20 @@ apiRouter.get("/portfolio/:address", async (req, res) => {
     res.json(data);
   } catch (err: any) {
     res.status(400).json({ error: err?.message || "Failed to fetch portfolio" });
+  }
+});
+
+apiRouter.get("/risk/:address", async (req, res) => {
+  try {
+    const [allocation, positionRisk] = await Promise.all([
+      analyzePortfolioAllocation(req.params.address),
+      calculatePositionRisk({ address: req.params.address }),
+    ]);
+    res.json({ allocation, positionRisk });
+  } catch (err: any) {
+    res
+      .status(400)
+      .json({ error: err?.message || "Failed to evaluate portfolio risk" });
   }
 });
 

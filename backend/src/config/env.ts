@@ -27,7 +27,15 @@ const envSchema = z.object({
   CHAINLINK_AVAX_USD_FEED: z
     .string()
     .default("0x5498BB86BC934c8D34FDA08E81D444153d0D06aD"),
-  AAVE_V3_POOL_ADDRESS: z.string().optional().default(""),
+  AAVE_V3_POOL_ADDRESS: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v && v.trim().length > 0
+        ? v.trim()
+        : "0xccEa5C65f6d4F465B71501418b88FBe4e7071283"
+    )
+    .default("0xccEa5C65f6d4F465B71501418b88FBe4e7071283"),
 });
 
 export const env = envSchema.parse(process.env);

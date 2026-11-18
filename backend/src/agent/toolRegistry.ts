@@ -136,7 +136,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
   {
     name: "analyze_portfolio_allocation",
     description:
-      "Deterministically analyze current token allocation and concentration risk, optionally simulating a hypothetical swap.",
+      "Deterministically analyze current token allocation, concentration risk, mUSDC allowance exposure, and Router AVAX liquidity risk with explicit data sources (ON_CHAIN, DETERMINISTIC_MATH), optionally simulating a hypothetical swap.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -155,7 +155,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
   {
     name: "calculate_position_risk",
     description:
-      "Deterministically evaluate portfolio drawdown risk, and compute Health Factor / Liquidation Price ONLY when explicit collateral/debt parameters are provided.",
+      "Evaluate portfolio -20% AVAX drawdown stress risk, live Aave V3 Fuji Pool (0xccEa5C...) lending position, mUSDC allowance exposure, and router liquidity risk; computes Health Factor / Liquidation Price ONLY from live Aave debt or user-supplied collateral/debt, otherwise returns INSUFFICIENT_DATA.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -322,6 +322,8 @@ export async function executeTool(
         amountIn: plan.amountIn,
         estimatedOutAvax: plan.estimatedOutAvax,
         minAmountOutAvax: plan.minAmountOutAvax,
+        simulationStatus: plan.guardian.simulation.status,
+        simulationRevertReason: plan.guardian.simulation.revertReason,
         policyChecks: plan.policyChecks,
       };
     }
@@ -344,6 +346,8 @@ export async function executeTool(
         valid: plan.valid,
         reason: plan.reason,
         allowanceAmountMusdc: plan.amountIn,
+        simulationStatus: plan.guardian.simulation.status,
+        simulationRevertReason: plan.guardian.simulation.revertReason,
         policyChecks: plan.policyChecks,
       };
     }
@@ -366,6 +370,8 @@ export async function executeTool(
         valid: plan.valid,
         reason: plan.reason,
         allowanceAmountMusdc: "0",
+        simulationStatus: plan.guardian.simulation.status,
+        simulationRevertReason: plan.guardian.simulation.revertReason,
         policyChecks: plan.policyChecks,
       };
     }

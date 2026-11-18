@@ -430,3 +430,64 @@ export async function resetAgentSession(sessionId: string): Promise<void> {
   });
   await handleJson(res);
 }
+
+export interface RiskOverviewResponse {
+  allocation: {
+    concentrationRisk: "HIGH_VOLATILE" | "BALANCED" | "HIGH_STABLE" | "EMPTY";
+    assetExposure: {
+      volatileUsd: number;
+      volatilePct: number;
+      stableUsd: number;
+      stablePct: number;
+      topAssetSymbol: string;
+      topAssetSharePct: number;
+    };
+    allowanceExposure: {
+      spenderAddress: string;
+      approvedMusdc: string;
+      walletBalanceMusdc: string;
+      exceedsWalletBalance: boolean;
+      riskLevel: string;
+      source: string;
+      updatedAt: string;
+    };
+    routerLiquidityRisk: {
+      routerAddress: string;
+      availableAvax: string;
+      maxSwappableMusdc: string;
+      priceImpactBps: number;
+      priceImpactModel: string;
+      riskLevel: string;
+      source: string;
+      updatedAt: string;
+    };
+    analyzedAt: string;
+  };
+  positionRisk: {
+    portfolioVolatilityExposurePct: number;
+    avaxPriceDrop20PctImpactUsd: number;
+    liquidationRiskStatus: string;
+    aavePosition?: {
+      configured: boolean;
+      bytecodeVerified: boolean;
+      poolAddress?: string;
+      hasPosition: boolean;
+      totalCollateralUsd: number;
+      totalDebtUsd: number;
+      availableBorrowsUsd: number;
+      healthFactor: number | null;
+      status: string;
+      dataSource: string;
+      fetchedAt: string;
+    };
+    limitations: string;
+    calculatedAt: string;
+  };
+}
+
+export async function fetchRiskOverview(
+  address: string
+): Promise<RiskOverviewResponse> {
+  const res = await fetch(`${API_BASE}/risk/${address}`);
+  return handleJson(res);
+}
