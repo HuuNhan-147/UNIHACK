@@ -28,12 +28,34 @@ export interface MaliciousIntentResult {
   reason?: string;
 }
 
+export function validateMusdcDecimals(amount: number): {
+  valid: boolean;
+  reason?: string;
+} {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return {
+      valid: false,
+      reason: "Số lượng mUSDC phải lớn hơn 0.",
+    };
+  }
+  const fixed = amount.toFixed(12).replace(/0+$/, "");
+  const parts = fixed.split(".");
+  if (amount < 0.000001 || (parts[1] && parts[1].length > 6)) {
+    return {
+      valid: false,
+      reason:
+        "Invalid mUSDC precision: Số lượng mUSDC tối thiểu là 0.000001 mUSDC và tối đa 6 chữ số thập phân (6 decimals).",
+    };
+  }
+  return { valid: true };
+}
+
 export function detectMaliciousIntent(message: string): MaliciousIntentResult {
   const lower = message.toLowerCase();
   const flags: string[] = [];
 
   if (
-    /ignore|bỏ qua|override|bypass|forget.*rule|không cần hỏi|without asking/i.test(
+    /ignore|bỏ qua|override|bypass|forget.*rule|không cần hỏi|without asking|system\s*notification|"role"\s*:\s*"system"|disable\s*all\s*policy|vô hiệu hóa.*chính sách|đánh dấu là valid/i.test(
       lower
     )
   ) {
@@ -42,15 +64,32 @@ export function detectMaliciousIntent(message: string): MaliciousIntentResult {
   if (/unlimited|maxuint|toàn bộ số dư|approve all|drain/i.test(lower)) {
     flags.push("UNLIMITED_APPROVAL_ATTEMPT");
   }
-  if (/0x[a-f0-9]{40}/i.test(message) && /chuyển|send|transfer/i.test(lower)) {
+  if (
+    /0x[a-f0-9]{40}/i.test(message) &&
+    /chuyển|send|transfer|sửa địa chỉ|trường\s*"to"|ghi đè.*calldata/i.test(lower)
+  ) {
     flags.push("ARBITRARY_RECIPIENT_TRANSFER");
   }
   if (
-    /private\s*key|seed\s*phrase|mnemonic|auto[\s-]*sign|tự\s*động\s*ký|without\s*signature|không\s*cần\s*ký/i.test(
+    /private\s*key|seed\s*phrase|mnemonic|auto[\s-]*sign|tự\s*động\s*ký|without\s*signature|không\s*cần\s*ký|signed\s*raw\s*transaction/i.test(
       lower
     )
   ) {
     flags.push("SECRET_OR_CUSTODY_VIOLATION");
+  }
+  if (
+    /system[\s_]*instruction|system[\s_]*prompt|chỉ thị hệ thống|check\s*prompt|kiểm tra\s*prompt|in nguyên văn|print.*verbatim|quy tắc\s*(?:số\s*)?\d+|rule\s*\d+|missing\s*amount\s*guard|explicit\s*over[\s-]*limit|function\s*declarations|schema\s*json\s*nội\s*bộ|detectmaliciousintent|đứng trước dòng|lỗ\s*hổng.*(?:prompt|khai\s*thác|vá)|lỗi\s*hổng.*(?:prompt|khai\s*thác|vá)|điểm yếu.*system\s*prompt/i.test(
+      lower
+    )
+  ) {
+    flags.push("PROMPT_OR_SCHEMA_EXTRACTION");
+  }
+  if (
+    /âm thầm gọi|silently call|không cần thông báo cho tôi|without telling me|without notifying/i.test(
+      lower
+    )
+  ) {
+    flags.push("HIDDEN_TOOL_INJECTION");
   }
 
   if (flags.length > 0) {
@@ -58,9 +97,9 @@ export function detectMaliciousIntent(message: string): MaliciousIntentResult {
       isMalicious: true,
       riskLevel: flags.length >= 2 ? "CRITICAL" : "HIGH",
       flags,
-      reason: `Phát hiện yêu cầu có dấu hiệu vượt quyền hoặc tấn công Prompt Injection (${flags.join(
+      reason: `Phát hiện yêu cầu vượt quyền, khai thác cấu hình nội bộ hoặc tấn công Prompt Injection (${flags.join(
         ", "
-      )}). Hệ thống chặn tạo calldata.`,
+      )}). Hệ thống chặn xử lý theo cơ chế Zero-Trust Guard.`,
     };
   }
 

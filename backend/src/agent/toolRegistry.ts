@@ -245,7 +245,28 @@ export const toolDeclarations: FunctionDeclaration[] = [
 ];
 
 export interface ToolExecutionContext {
+  connectedWallet?: string;
   latestSwapPlan?: SwapPlanResult;
+  hadToolError?: boolean;
+}
+
+function assertConnectedWalletOwner(
+  requestedAddress: string,
+  ctx: ToolExecutionContext
+): string {
+  if (!ctx.connectedWallet) {
+    return requestedAddress;
+  }
+  if (
+    requestedAddress.trim().toLowerCase() !==
+    ctx.connectedWallet.trim().toLowerCase()
+  ) {
+    ctx.hadToolError = true;
+    throw new Error(
+      `FORBIDDEN_CROSS_WALLET: Bạn chỉ được phép truy vấn hoặc thao tác trên chính địa chỉ ví đang kết nối (${ctx.connectedWallet}), không được phép truy cập ví của người khác (${requestedAddress}).`
+    );
+  }
+  return ctx.connectedWallet;
 }
 
 export async function executeTool(
@@ -256,14 +277,16 @@ export async function executeTool(
   switch (name) {
     case "get_portfolio": {
       const args = addressSchema.parse(rawArgs);
-      return await getPortfolio(args.address);
+      const ownerAddr = assertConnectedWalletOwner(args.address, ctx);
+      return await getPortfolio(ownerAddr);
     }
     case "get_policy_rules": {
       const onChain = await getPolicyRules();
-      const addr =
+      const rawAddr =
         typeof (rawArgs as any)?.userAddress === "string"
           ? (rawArgs as any).userAddress
           : "";
+      const addr = ctx.connectedWallet || rawAddr;
       const profile = getAgentProfile(addr || undefined);
       const dailyUsage = addr ? getDailyUsage(addr) : { spentMusdc: 0, txCount: 0 };
       return {
@@ -279,7 +302,8 @@ export async function executeTool(
     }
     case "get_tx_history": {
       const args = addressSchema.parse(rawArgs);
-      return await getAvalancheTxHistory(args.address);
+      const ownerAddr = assertConnectedWalletOwner(args.address, ctx);
+      return await getAvalancheTxHistory(ownerAddr);
     }
     case "get_swap_quote": {
       const args = swapQuoteSchema.parse(rawArgs);
@@ -291,14 +315,16 @@ export async function executeTool(
     }
     case "analyze_portfolio_allocation": {
       const args = allocationSchema.parse(rawArgs);
+      const ownerAddr = assertConnectedWalletOwner(args.address, ctx);
       return await analyzePortfolioAllocation(
-        args.address,
+        ownerAddr,
         args.hypotheticalSwapMusdc
       );
     }
     case "calculate_position_risk": {
       const args = riskSchema.parse(rawArgs);
-      return await calculatePositionRisk(args);
+      const ownerAddr = assertConnectedWalletOwner(args.address, ctx);
+      return await calculatePositionRisk({ ...args, address: ownerAddr });
     }
     case "plan_swap": {
       if (ctx.latestSwapPlan) {
@@ -307,8 +333,9 @@ export async function executeTool(
         );
       }
       const args = planSwapArgsSchema.parse(rawArgs);
+      const ownerAddr = assertConnectedWalletOwner(args.userAddress, ctx);
       const plan = await buildSwapPlan(
-        args.userAddress,
+        ownerAddr,
         args.amountInMusdc,
         args.slippageBps,
         args.objective
@@ -334,8 +361,9 @@ export async function executeTool(
         );
       }
       const args = planSetAllowanceSchema.parse(rawArgs);
+      const ownerAddr = assertConnectedWalletOwner(args.userAddress, ctx);
       const plan = await buildAllowancePlan({
-        userAddress: args.userAddress,
+        userAddress: ownerAddr,
         amountMusdc: args.amountMusdc,
         mode: "SET",
       });
@@ -358,8 +386,9 @@ export async function executeTool(
         );
       }
       const args = planRevokeAllowanceSchema.parse(rawArgs);
+      const ownerAddr = assertConnectedWalletOwner(args.userAddress, ctx);
       const plan = await buildAllowancePlan({
-        userAddress: args.userAddress,
+        userAddress: ownerAddr,
         amountMusdc: 0,
         mode: "REVOKE",
       });

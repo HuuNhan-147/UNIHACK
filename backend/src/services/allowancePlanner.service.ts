@@ -5,6 +5,7 @@ import { getContracts, withRpcTimeout } from "./blockchain.service";
 import {
   ON_CHAIN_MAX_PER_TX_MUSDC,
   PolicyCheckItem,
+  validateMusdcDecimals,
 } from "./deterministicPolicy.service";
 import {
   GovernanceDecision,
@@ -28,8 +29,11 @@ export async function buildAllowancePlan(params: {
   if (!ethers.isAddress(params.userAddress)) {
     throw new Error("Invalid userAddress");
   }
-  if (params.mode === "SET" && (!Number.isFinite(params.amountMusdc) || params.amountMusdc <= 0)) {
-    throw new Error("Allowance amount must be greater than 0");
+  if (params.mode === "SET") {
+    const decCheck = validateMusdcDecimals(params.amountMusdc);
+    if (!decCheck.valid) {
+      throw new Error(decCheck.reason || "Allowance amount must be greater than 0");
+    }
   }
 
   const profile = getAgentProfile(params.userAddress);

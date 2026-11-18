@@ -116,12 +116,41 @@ export async function getAvalancheTxHistory(userAddress: string): Promise<{
     glacierPromise,
   ]);
 
+  // Enrich swapExecutedEvents with confirmed AgentVaultExecutor swaps from Glacier
+  // when they are older than the 95-block RPC log window.
+  const execLower = (env.EXECUTOR_ADDRESS || "").toLowerCase();
+  const seenSwapHashes = new Set(
+    swapExecutedEvents.map((e) => e.hash.toLowerCase())
+  );
+  const mergedSwapEvents = [...swapExecutedEvents];
+  for (const g of glacierRes.txs) {
+    if (
+      execLower &&
+      g.to.toLowerCase() === execLower &&
+      g.txStatus === "1" &&
+      !seenSwapHashes.has(g.txHash.toLowerCase())
+    ) {
+      seenSwapHashes.add(g.txHash.toLowerCase());
+      mergedSwapEvents.push({
+        hash: g.txHash,
+        action: "Swap mUSDC → AVAX (AgentVaultExecutor)",
+        amount: "mUSDC → AVAX",
+        status: "SUCCESS",
+        detail: "Verified via Avalanche Glacier (AgentVaultExecutor · Fuji 43113)",
+        timestamp: g.blockTimestamp
+          ? new Date(g.blockTimestamp * 1000).toISOString()
+          : "On-chain",
+        sortTime: g.blockTimestamp || 0,
+      });
+    }
+  }
+
   return {
     address: userAddress,
     chainId: 43113,
     glacierAvailable: glacierRes.ok,
     glacierTransactions: glacierRes.txs,
-    swapExecutedEvents,
+    swapExecutedEvents: mergedSwapEvents,
     note: glacierRes.ok
       ? "Combined Avalanche Fuji Glacier API history and AgentVaultExecutor SwapExecuted events."
       : "Glacier API unavailable; showing AgentVaultExecutor SwapExecuted events from Fuji RPC (last ~95 blocks).",

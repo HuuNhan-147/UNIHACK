@@ -7,6 +7,7 @@ import {
   getPortfolio,
 } from "./portfolio.service";
 import { getAavePosition, AaveUserAccountData } from "./aave.service";
+import { validateMusdcDecimals } from "./deterministicPolicy.service";
 
 export type RiskDataSource =
   | "ON_CHAIN"
@@ -153,8 +154,9 @@ export async function getSwapQuoteDeterministic(
   amountInMusdc: number,
   slippageBps = 100
 ): Promise<SwapQuoteResult> {
-  if (!Number.isFinite(amountInMusdc) || amountInMusdc <= 0) {
-    throw new Error("amountInMusdc must be a positive number.");
+  const decCheck = validateMusdcDecimals(amountInMusdc);
+  if (!decCheck.valid) {
+    throw new Error(decCheck.reason || "amountInMusdc must be a positive number.");
   }
   if (!Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 1000) {
     throw new Error("slippageBps must be an integer between 1 and 1000.");

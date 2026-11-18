@@ -5,6 +5,7 @@ import { getContracts, withRpcTimeout } from "./blockchain.service";
 import {
   PolicyCheckItem,
   validateActionAgainstPolicy,
+  validateMusdcDecimals,
 } from "./deterministicPolicy.service";
 import { savePlan, StructuredPlanRecord } from "./store.service";
 import {
@@ -70,12 +71,13 @@ export async function buildSwapPlan(
   if (!ethers.isAddress(userAddress)) {
     throw new Error("Invalid userAddress");
   }
-  if (amountInMusdc <= 0) {
-    throw new Error("amountInMusdc must be greater than 0");
+  const decCheck = validateMusdcDecimals(amountInMusdc);
+  if (!decCheck.valid) {
+    throw new Error(decCheck.reason || "Invalid amountInMusdc");
   }
 
   const { musdc, router } = getContracts();
-  const amountInRaw = ethers.parseUnits(amountInMusdc.toString(), 6);
+  const amountInRaw = ethers.parseUnits(amountInMusdc.toFixed(6), 6);
 
   const [expectedOutWei, currentAllowance, userBalance, policyValidation] =
     await withRpcTimeout(

@@ -5,12 +5,27 @@ export interface ChatTurnPart {
 
 interface SessionEntry {
   history: ChatTurnPart[];
+  meta: Record<string, any>;
   lastAccessedAt: number;
 }
 
 const MAX_TURNS_PER_SESSION = 16; // 8 user+model pairs
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const sessions = new Map<string, SessionEntry>();
+
+export function scopeSessionId(
+  userAddress?: string,
+  sessionId = "default"
+): string {
+  const raw = String(sessionId || "default").trim() || "default";
+  if (raw.startsWith("eval_") || raw.includes("::")) {
+    return raw;
+  }
+  const owner = userAddress && userAddress.trim()
+    ? userAddress.trim().toLowerCase()
+    : "";
+  return owner ? `${owner}::${raw}` : raw;
+}
 
 function cleanupExpiredSessions(): void {
   const now = Date.now();
@@ -37,6 +52,7 @@ export function appendSessionTurn(
   cleanupExpiredSessions();
   const entry = sessions.get(sessionId) ?? {
     history: [],
+    meta: {},
     lastAccessedAt: Date.now(),
   };
 
@@ -52,6 +68,35 @@ export function appendSessionTurn(
   sessions.set(sessionId, entry);
 }
 
+export function setSessionMeta(
+  sessionId: string,
+  key: string,
+  value: any
+): void {
+  cleanupExpiredSessions();
+  const entry = sessions.get(sessionId) ?? {
+    history: [],
+    meta: {},
+    lastAccessedAt: Date.now(),
+  };
+  entry.meta[key] = value;
+  entry.lastAccessedAt = Date.now();
+  sessions.set(sessionId, entry);
+}
+
+export function getSessionMeta<T = any>(
+  sessionId: string,
+  key: string
+): T | undefined {
+  cleanupExpiredSessions();
+  return sessions.get(sessionId)?.meta?.[key] as T | undefined;
+}
+
 export function clearSessionHistory(sessionId: string): void {
   sessions.delete(sessionId);
+  for (const key of sessions.keys()) {
+    if (key.endsWith(`::${sessionId}`)) {
+      sessions.delete(key);
+    }
+  }
 }
