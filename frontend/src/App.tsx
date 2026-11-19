@@ -65,7 +65,7 @@ const DashboardContent: React.FC = () => {
       const [pol, profRes, logs] = await Promise.all([
         fetchPolicy().catch(() => null),
         fetchAgentProfile(address ?? undefined).catch(() => null),
-        fetchAuditLogs().catch(() => []),
+        fetchAuditLogs(address ?? undefined).catch(() => []),
       ]);
       if (pol) setPolicy(pol);
       if (profRes) {

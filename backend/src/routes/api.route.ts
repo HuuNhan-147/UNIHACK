@@ -361,6 +361,8 @@ apiRouter.post("/agent/session/reset", (req, res) => {
   res.json({ ok: true, sessionId });
 });
 
-apiRouter.get("/audit-logs", (_req, res) => {
-  res.json({ logs: getAuditLogs() });
+apiRouter.get("/audit-logs", (req, res) => {
+  const userAddress =
+    typeof req.query.userAddress === "string" ? req.query.userAddress : undefined;
+  res.json({ logs: getAuditLogs(userAddress) });
 });

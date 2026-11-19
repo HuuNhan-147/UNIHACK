@@ -86,6 +86,7 @@ interface VaultStoreData {
   dailyUsage: Record<string, Record<string, DailyUsageRecord>>;
   plans: Record<string, StructuredPlanRecord>;
   auditLogs: AuditLogEvent[];
+  verifiedTxHashes?: string[];
 }
 
 const DATA_DIR = path.resolve(__dirname, "../../data");
@@ -248,6 +249,28 @@ export function appendAuditLog(
   return entry;
 }
 
-export function getAuditLogs(): AuditLogEvent[] {
-  return readStore().auditLogs;
+export function getAuditLogs(userAddress?: string): AuditLogEvent[] {
+  if (!userAddress || !userAddress.trim()) {
+    return [];
+  }
+  const normalized = userAddress.trim().toLowerCase();
+  return readStore().auditLogs.filter(
+    (log) => log.userAddress?.toLowerCase() === normalized
+  );
+}
+
+export function hasVerifiedTx(txHash: string): boolean {
+  const store = readStore();
+  const normalized = txHash.toLowerCase();
+  return (store.verifiedTxHashes ?? []).includes(normalized);
+}
+
+export function markTxVerified(txHash: string): void {
+  const store = readStore();
+  const normalized = txHash.toLowerCase();
+  const list = store.verifiedTxHashes ?? [];
+  if (!list.includes(normalized)) {
+    store.verifiedTxHashes = [normalized, ...list].slice(0, 500);
+    writeStore(store);
+  }
 }

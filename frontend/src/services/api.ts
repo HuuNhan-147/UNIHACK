@@ -338,8 +338,13 @@ export async function simulateTransaction(params: {
   return handleJson(res);
 }
 
-export async function fetchAuditLogs(): Promise<AuditLogEvent[]> {
-  const res = await fetch(`${API_BASE}/audit-logs`);
+export async function fetchAuditLogs(
+  userAddress?: string
+): Promise<AuditLogEvent[]> {
+  const query = userAddress
+    ? `?userAddress=${encodeURIComponent(userAddress)}`
+    : "";
+  const res = await fetch(`${API_BASE}/audit-logs${query}`);
   const data = await handleJson<{ logs: AuditLogEvent[] }>(res);
   return data.logs || [];
 }

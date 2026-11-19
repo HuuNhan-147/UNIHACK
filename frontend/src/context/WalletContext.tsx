@@ -237,7 +237,18 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({
       throw new Error("Chưa cấu hình VITE_MUSDC_ADDRESS trong frontend/.env");
     }
     if (!window.ethereum) throw new Error("Ví chưa kết nối.");
-    const provider = new ethers.BrowserProvider(window.ethereum);
+    let provider = new ethers.BrowserProvider(window.ethereum);
+    const net = await provider.getNetwork();
+    if (Number(net.chainId) !== FUJI_CHAIN_ID) {
+      await switchToFuji();
+      provider = new ethers.BrowserProvider(window.ethereum);
+      const updatedNet = await provider.getNetwork();
+      if (Number(updatedNet.chainId) !== FUJI_CHAIN_ID) {
+        throw new Error(
+          `Sai mạng Blockchain (hiện tại: ${updatedNet.chainId}, yêu cầu Avalanche Fuji ${FUJI_CHAIN_ID}).`
+        );
+      }
+    }
     const signer = await provider.getSigner();
     const musdc = new ethers.Contract(
       MUSDC_ADDRESS,
